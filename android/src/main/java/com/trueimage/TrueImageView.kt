@@ -78,6 +78,7 @@ class TrueImageView(context: Context) : View(context) {
   internal val hasPendingLoad: Boolean get() = pending != null
   internal val hasBlurStandIn: Boolean get() = blurStandIn != null
   internal val currentDrawable: Drawable? get() = current?.drawable
+  internal val fadeAlpha: Float? get() = crossfade?.alpha(now())
 
   init {
     setWillNotDraw(false)

@@ -231,6 +231,83 @@ class TrueImageViewTest : GlideTestCase() {
   }
 
   @Test
+  fun interruptedFadeInResumesFromItsCurrentAlpha() {
+    val h = harness()
+    h.set(a, transition = 400)
+    settle()
+    advance(200)
+    h.draw()
+    assertEquals(0.5f, h.view.fadeAlpha!!, 0.05f)
+    h.set(b, transition = 400)
+    settle()
+    // The view as a whole carries on from where it was; the new image does not restart at zero.
+    assertEquals(0.5f, h.view.fadeAlpha!!, 0.1f)
+    advance(400)
+    h.draw()
+    assertEquals(1, h.names.count { it == "topDisplayEnd" })
+  }
+
+  @Test
+  fun replacementInterruptedByAnotherReplacementReportsOnce() {
+    prefetch(a, b, "https://cdn.example.com/c.jpg")
+    val h = harness()
+    h.set(a, transition = 300)
+    h.set(b, transition = 300)
+    advance(100)
+    h.draw()
+    h.set("https://cdn.example.com/c.jpg", transition = 300)
+    h.events.clear()
+    advance(500)
+    h.draw()
+    assertEquals(listOf("topDisplayEnd"), h.names)
+    assertFalse(h.view.isCrossfading)
+  }
+
+  @Test
+  fun bitmapResourceLoadsThroughGlideAndNeverFades() {
+    val h = harness()
+    h.set("true_image_test_bitmap", transition = 300)
+    settle { h.events.size >= 3 }
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+    assertFalse(h.view.isCrossfading)
+  }
+
+  @Test
+  fun committingTheSameSourceAgainDoesNotReload() {
+    val h = harness()
+    h.set(a)
+    settle()
+    h.set(a)
+    h.view.commit()
+    settle()
+    assertEquals(1, network.fetches[a])
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+  }
+
+  @Test
+  fun reapplyingTheSameRecyclingKeyDoesNotClear() {
+    prefetch(a)
+    val h = harness()
+    h.set(a, recyclingKey = "1")
+    h.events.clear()
+    h.set(a, recyclingKey = "1")
+    assertTrue(h.view.hasImage)
+    assertTrue(h.events.isEmpty())
+  }
+
+  @Test
+  fun blurChangeDoesNotReload() {
+    prefetch(a)
+    val h = harness()
+    h.set(a)
+    h.view.blurRadius = 12f
+    h.view.commit()
+    settle()
+    assertEquals(1, network.fetches[a])
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+  }
+
+  @Test
   fun twoViewsSharingACachedImageDoNotShareADrawable() {
     prefetch(a)
     val first = harness()

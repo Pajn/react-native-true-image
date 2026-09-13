@@ -2,6 +2,8 @@
 
 #import <SDWebImage/SDWebImage.h>
 
+#import "TrueImageModule.h"
+
 /// The prefetch/view cache-key contract.
 @interface TrueImagePrefetchParityTests : TrueImageTestCase
 @end
@@ -112,6 +114,24 @@
     return h.events.count >= 3;
   }]);
   XCTAssertEqualObjects(self.network.headersSeen[_url], @{@"Authorization" : @"Bearer v"});
+}
+
+- (void)testModuleTreatsMalformedEntriesAsFailuresButStillLoadsTheRest
+{
+  __block NSNumber *result;
+  TrueImageModule *module = [TrueImageModule new];
+  [module prefetch:@[ @"junk", @{}, @{@"uri" : @42}, @{@"uri" : _url} ]
+           resolve:^(id value) {
+             result = value;
+           }
+            reject:^(NSString *code, NSString *message, NSError *error) {
+              XCTFail(@"must resolve");
+            }];
+  XCTAssertTrue([self waitFor:^{
+    return result != nil;
+  }]);
+  XCTAssertFalse(result.boolValue);
+  XCTAssertEqual([self.network fetchCount:_url], 1u);
 }
 
 - (void)testWebPDecodes

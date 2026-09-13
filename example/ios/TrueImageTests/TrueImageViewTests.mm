@@ -85,6 +85,93 @@
   XCTAssertEqualObjects(h.events, (@[ @"load", @"display", @"load", @"display", @"displayEnd" ]));
 }
 
+- (void)testInterruptedFadeInResumesFromItsCurrentOpacity
+{
+  TrueImageHarness *h = [self harness];
+  [h setSource:_a transition:400 recyclingKey:nil];
+  XCTAssertTrue([self waitForEvents:h count:2]);
+  [self spin:0.2];
+  [h setSource:_b transition:400 recyclingKey:nil];
+  XCTAssertTrue([self waitForEvents:h count:4]);
+  CABasicAnimation *fade = (CABasicAnimation *)[h.imageLayer animationForKey:@"fade"];
+  XCTAssertEqualObjects(fade.keyPath, @"opacity", @"a running fade-in keeps fading opacity instead of crossfading");
+  XCTAssertGreaterThan([fade.fromValue floatValue], 0.2, @"it carries on from where it was, not from zero");
+  XCTAssertLessThan([fade.fromValue floatValue], 0.9);
+  [self spin:0.6];
+  NSUInteger ends = [h.events filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"SELF == 'displayEnd'"]].count;
+  XCTAssertEqual(ends, 1u);
+}
+
+- (void)testReplacementInterruptedByAnotherReplacementReportsOnce
+{
+  NSString *c = @"https://cdn.example.com/c.jpg";
+  [self prefetch:@[ _a, _b, c ]];
+  TrueImageHarness *h = [self harness];
+  [h setSource:_a transition:300 recyclingKey:nil];
+  [h setSource:_b transition:300 recyclingKey:nil];
+  [self spin:0.1];
+  [h setSource:c transition:300 recyclingKey:nil];
+  [h reset];
+  CABasicAnimation *fade = (CABasicAnimation *)[h.imageLayer animationForKey:@"fade"];
+  XCTAssertEqualObjects(fade.keyPath, @"contents");
+  [self spin:0.5];
+  XCTAssertEqualObjects(h.events, @[ @"displayEnd" ]);
+  XCTAssertFalse(h.isFading);
+}
+
+- (void)testCommittingTheSameSourceAgainDoesNotReload
+{
+  TrueImageHarness *h = [self harness];
+  [h setSource:_a transition:0 recyclingKey:nil];
+  XCTAssertTrue([self waitForEvents:h count:3]);
+  [h setSource:_a transition:0 recyclingKey:nil];
+  [h.view commit];
+  [self spin:0.1];
+  XCTAssertEqual([self.network fetchCount:_a], 1u);
+  XCTAssertEqual(h.events.count, 3u);
+}
+
+- (void)testReapplyingTheSameRecyclingKeyDoesNotClear
+{
+  [self prefetch:@[ _a ]];
+  TrueImageHarness *h = [self harness];
+  [h setSource:_a transition:0 recyclingKey:@"1"];
+  [h reset];
+  [h setSource:_a transition:0 recyclingKey:@"1"];
+  XCTAssertNotNil(h.imageLayer.contents);
+  XCTAssertEqual(h.events.count, 0u);
+}
+
+- (void)testBlurChangeTransformsTheCachedOriginalWithoutRefetching
+{
+  [self prefetch:@[ _a ]];
+  TrueImageHarness *h = [self harness];
+  [h setSource:_a transition:0 recyclingKey:nil];
+  [h reset];
+  h.view.blurRadius = 6;
+  [h.view commit];
+  XCTAssertTrue([self waitForEvents:h count:3], @"a new blur is a new image and reports as one");
+  XCTAssertEqual([self.network fetchCount:_a], 1u);
+}
+
+- (void)testResizeRefinesToALargerThumbnail
+{
+  self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(1000, 1000) color:UIColor.greenColor];
+  TrueImageHarness *h = [self harness];
+  [h setSource:_a transition:0 recyclingKey:nil];
+  XCTAssertTrue([self waitForEvents:h count:3]);
+  CGFloat scale = h.view.traitCollection.displayScale;
+  XCTAssertTrue([self waitFor:^{
+    return CGImageGetWidth((CGImageRef)h.imageLayer.contents) == (size_t)(40 * scale);
+  }]);
+  h.view.frame = CGRectMake(0, 0, 100, 100);
+  [h.view layoutIfNeeded];
+  XCTAssertTrue([self waitFor:^{
+    return CGImageGetWidth((CGImageRef)h.imageLayer.contents) == (size_t)(100 * scale);
+  }], @"a bigger view gets a bigger thumbnail");
+  XCTAssertEqual(h.events.count, 3u);
+}
+
 - (void)testNullSourceClearsAndEmitsNothing
 {
   [self prefetch:@[ _a ]];
