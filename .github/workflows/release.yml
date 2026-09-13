@@ -67,6 +67,9 @@ jobs:
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # npm reports why a trusted-publishing token exchange failed only
+          # at verbose level; a release is rare enough to afford the noise.
+          NPM_CONFIG_LOGLEVEL: verbose
         run: |
           args=(--ci)
           if [ -n "${{ inputs.increment }}" ]; then
