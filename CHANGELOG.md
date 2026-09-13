@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format follows [Conventional Commits](https://www.conventionalcommits.org/); entries are generated at release time.
 
 
+## [1.1.2](https://github.com/Pajn/react-native-true-image/compare/v1.1.1...v1.1.2) (2026-09-13)
+
+### Bug Fixes
+
+* register the iOS TurboModule under the name JS asks for ([2fd03a8](https://github.com/Pajn/react-native-true-image/commit/2fd03a88a65e6679aaba5a33cfb527a1816daf02))
+
 ## [1.1.1](https://github.com/Pajn/react-native-true-image/compare/v1.1.0...v1.1.1) (2026-09-13)
 
 ### Bug Fixes
