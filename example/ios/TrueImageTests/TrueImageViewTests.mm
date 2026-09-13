@@ -511,16 +511,46 @@
   XCTAssertEqualObjects(h.payloads[0][@"error"], @"HTTP 404");
 }
 
-- (void)testPrepareForRecycleClearsEverything
+- (void)testPrepareForRecycleOffScreenClearsEverything
 {
   [self prefetch:@[ _a ]];
   TrueImageHarness *h = [self harness];
   [h setSource:_a transition:0 recyclingKey:@"1"];
+  [h.view removeFromSuperview];
   [h.view prepareForRecycle];
   XCTAssertNil(h.imageLayer.contents);
   XCTAssertNil(h.view.source);
   XCTAssertNil(h.view.recyclingKey);
   XCTAssertNil(h.view.onLoad);
+}
+
+- (void)testPrepareForRecycleOnScreenKeepsThePixelsUntilTheViewMoves
+{
+  [self prefetch:@[ _a ]];
+  [self.network.hang addObject:_b];
+  TrueImageHarness *h = [self harness];
+  [h setSource:_a transition:0 recyclingKey:@"1"];
+  [h setSource:_b transition:0 recyclingKey:@"1"];
+  [h reset];
+  [h.view prepareForRecycle];
+  XCTAssertNotNil(h.imageLayer.contents, @"the exit animation still shows the image");
+  XCTAssertNil(h.view.source);
+  [self.network release:_b];
+  [self spin:0.2];
+  XCTAssertEqual(h.events.count, 0u, @"the pending load was cancelled");
+  [h.view removeFromSuperview];
+  XCTAssertNil(h.imageLayer.contents);
+}
+
+- (void)testViewReusedBeforeItMovedStartsEmpty
+{
+  [self prefetch:@[ _a, _b ]];
+  TrueImageHarness *h = [self harness];
+  [h setSource:_a transition:300 recyclingKey:nil];
+  [h.view prepareForRecycle];
+  [h setSource:_b transition:300 recyclingKey:nil];
+  XCTAssertFalse(h.isFading, @"a memory hit into a cleared view draws at once; no crossfade from the stale image");
+  XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 8u);
 }
 
 @end

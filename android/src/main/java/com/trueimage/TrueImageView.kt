@@ -82,6 +82,8 @@ class TrueImageView(context: Context) : View(context) {
   private var appliedBlur = 0f
   private var appliedBlurPixelsPerRadius = Blur.DEFAULT_PIXELS_PER_RADIUS
   private var appliedPlaceholder: String? = null
+  /** Set by [release]; the view is no longer React's and must stay silent. */
+  private var released = false
 
   private val filter = PaintFlagsDrawFilter(0, Paint.FILTER_BITMAP_FLAG)
 
@@ -152,9 +154,24 @@ class TrueImageView(context: Context) : View(context) {
     load(request)
   }
 
-  /** Called when the view manager drops the view. Nothing may run after this. */
+  /**
+   * Called when React drops the view. Loads stop and events stop, but the
+   * pixels stay until the view leaves the window: a navigator can keep an
+   * unmounted screen on screen for its exit animation, and blanking every
+   * image on it would show whatever lies behind for the whole slide.
+   */
   fun release() {
+    released = true
     cancelPending()
+    if (!isAttachedToWindow) releaseLayers()
+  }
+
+  override fun onDetachedFromWindow() {
+    super.onDetachedFromWindow()
+    if (released) releaseLayers()
+  }
+
+  private fun releaseLayers() {
     crossfade = null
     releaseLayer(previous)
     releaseLayer(current)
@@ -553,6 +570,7 @@ class TrueImageView(context: Context) : View(context) {
   private fun emitDisplayEnd() = emit("topDisplayEnd", emptyMap())
 
   private fun emit(name: String, payload: Map<String, Any>) {
+    if (released) return
     eventSink?.let {
       it(name, payload)
       return

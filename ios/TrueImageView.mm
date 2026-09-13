@@ -73,6 +73,8 @@ enum class TrueImageKind { None, Bitmap, Resource };
   TrueImageFitMode _appliedFitMode;
   UIColor *_appliedTint;
   NSString *_appliedPlaceholder;
+  /// Recycled while still on screen: clear once the view moves.
+  BOOL _clearOnMove;
 }
 
 #pragma mark - Lifecycle
@@ -131,6 +133,14 @@ enum class TrueImageKind { None, Bitmap, Resource };
   }
 }
 
+- (void)didMoveToWindow
+{
+  [super didMoveToWindow];
+  if (_clearOnMove) {
+    [self clear];
+  }
+}
+
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection
 {
   [super traitCollectionDidChange:previousTraitCollection];
@@ -150,6 +160,11 @@ enum class TrueImageKind { None, Bitmap, Resource };
 
 - (void)commit
 {
+  // Reused before it moved: the old screen's pixels must not crossfade into
+  // the new component's image.
+  if (_clearOnMove) {
+    [self clear];
+  }
   if (_recyclingKey != _appliedRecyclingKey && ![_recyclingKey isEqualToString:_appliedRecyclingKey]) {
     _appliedRecyclingKey = [_recyclingKey copy];
     [self clear];
@@ -198,9 +213,18 @@ enum class TrueImageKind { None, Bitmap, Resource };
   [self load:request];
 }
 
+/// A navigator can keep an unmounted screen on screen for its exit
+/// animation, so a view recycled while still in a window keeps its pixels
+/// and clears when it moves; off screen it clears at once.
 - (void)prepareForRecycle
 {
-  [self clear];
+  if (self.window) {
+    [self cancelPending];
+    [self dropPlaceholder];
+    _clearOnMove = YES;
+  } else {
+    [self clear];
+  }
   _source = nil;
   _headers = nil;
   _recyclingKey = nil;
@@ -385,16 +409,19 @@ enum class TrueImageKind { None, Bitmap, Resource };
 
 - (void)cancelPending
 {
+  // Bump first: a cancel can run the completion synchronously with a
+  // cancelled error, and it must already look stale when it does.
+  _generation++;
   [TrueImageLoader cancel:_pendingToken];
   _pendingToken = nil;
   _hasPending = NO;
   [TrueImageLoader cancel:_placeholderToken];
   _placeholderToken = nil;
-  _generation++;
 }
 
 - (void)clear
 {
+  _clearOnMove = NO;
   [self cancelPending];
   [self dropPlaceholder];
   [self interruptFade];

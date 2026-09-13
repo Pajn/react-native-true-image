@@ -379,7 +379,7 @@ class TrueImageViewTest : GlideTestCase() {
   }
 
   @Test
-  fun releaseClearsEverything() {
+  fun releaseOfADetachedViewClearsEverything() {
     prefetch(a)
     network.hang += b
     val h = harness()
@@ -394,6 +394,27 @@ class TrueImageViewTest : GlideTestCase() {
     assertFalse(h.view.hasImage)
     assertFalse(h.view.isCrossfading)
     assertFalse(h.view.hasPendingLoad)
+  }
+
+  @Test
+  fun releasedViewKeepsItsImageUntilItLeavesTheWindow() {
+    prefetch(a)
+    network.hang += b
+    val h = harness()
+    val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+    activity.setContentView(h.view)
+    h.set(a)
+    h.view.source = b
+    h.view.commit()
+    h.events.clear()
+    h.view.release()
+    assertTrue("the exit animation still shows the image", h.view.hasImage)
+    assertFalse("but nothing is loading any more", h.view.hasPendingLoad)
+    network.release(b)
+    settle()
+    assertTrue(h.events.isEmpty())
+    (h.view.parent as android.view.ViewGroup).removeView(h.view)
+    assertFalse(h.view.hasImage)
   }
 
   @Test
