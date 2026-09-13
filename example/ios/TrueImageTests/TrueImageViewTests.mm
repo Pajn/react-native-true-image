@@ -154,6 +154,71 @@
   XCTAssertEqual([self.network fetchCount:_a], 1u);
 }
 
+- (void)testLargeBlurShrinksTheImageBeforeBlurring
+{
+  self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(1000, 1000) color:UIColor.greenColor];
+  TrueImageHarness *h = [self harness];
+  h.view.blurRadius = 100;
+  [h setSource:_a transition:0 recyclingKey:nil];
+  XCTAssertTrue([self waitForEvents:h count:3]);
+  // 1000 px shrunk by 100 / 2 = 50 is 20 px; far below the view, so the thumbnail tier leaves it alone.
+  XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 20u);
+  XCTAssertEqualObjects([TrueImageTestCase centerColorOf:(CGImageRef)h.imageLayer.contents], UIColor.greenColor,
+                        @"a flat image blurs to itself");
+}
+
+- (void)testMorePixelsPerRadiusKeepsAFinerBlur
+{
+  self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(1000, 1000) color:UIColor.greenColor];
+  TrueImageHarness *h = [self harness];
+  h.view.blurRadius = 100;
+  h.view.blurPixelsPerRadius = 10;
+  [h setSource:_a transition:0 recyclingKey:nil];
+  XCTAssertTrue([self waitForEvents:h count:3]);
+  XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 100u);
+}
+
+- (void)testZeroPixelsPerRadiusBlursAtFullSize
+{
+  self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(1000, 1000) color:UIColor.greenColor];
+  TrueImageHarness *h = [self harness];
+  h.view.blurRadius = 100;
+  h.view.blurPixelsPerRadius = 0;
+  [h setSource:_a transition:0 recyclingKey:nil];
+  XCTAssertTrue([self waitForEvents:h count:3]);
+  CGFloat scale = h.view.traitCollection.displayScale;
+  XCTAssertTrue([self waitFor:^{
+    // The full-size blur is what the thumbnail tier resamples down to the view.
+    return CGImageGetWidth((CGImageRef)h.imageLayer.contents) == (size_t)(40 * scale);
+  }]);
+}
+
+- (void)testPixelsPerRadiusChangeIsANewImage
+{
+  [self prefetch:@[ _a ]];
+  TrueImageHarness *h = [self harness];
+  h.view.blurRadius = 6;
+  [h setSource:_a transition:0 recyclingKey:nil];
+  XCTAssertTrue([self waitForEvents:h count:3]);
+  [h reset];
+  h.view.blurPixelsPerRadius = 4;
+  [h.view commit];
+  XCTAssertTrue([self waitForEvents:h count:3], @"a different shrink is a different image and reports as one");
+  XCTAssertEqual([self.network fetchCount:_a], 1u);
+}
+
+- (void)testPixelsPerRadiusChangeWithoutABlurIsNotANewImage
+{
+  [self prefetch:@[ _a ]];
+  TrueImageHarness *h = [self harness];
+  [h setSource:_a transition:0 recyclingKey:nil];
+  [h reset];
+  h.view.blurPixelsPerRadius = 4;
+  [h.view commit];
+  [self spin:0.1];
+  XCTAssertEqual(h.events.count, 0u, @"the shrink factor is 1 either way, so nothing reloads");
+}
+
 - (void)testResizeRefinesToALargerThumbnail
 {
   self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(1000, 1000) color:UIColor.greenColor];

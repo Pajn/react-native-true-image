@@ -104,6 +104,7 @@ static TrueImageFitMode TrueImageFitModeFromProp(TrueImageViewResizeMode mode)
   _view.fitMode = TrueImageFitModeFromProp(newProps.resizeMode);
   _view.transition = newProps.transition;
   _view.blurRadius = newProps.blurRadius;
+  _view.blurPixelsPerRadius = newProps.blurPixelsPerRadius;
   _view.tint = RCTUIColorFromSharedColor(newProps.tintColor);
   _view.recyclingKey = newProps.recyclingKey.empty() ? nil : RCTNSStringFromString(newProps.recyclingKey);
 

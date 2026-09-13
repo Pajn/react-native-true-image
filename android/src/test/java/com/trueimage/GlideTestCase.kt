@@ -55,6 +55,7 @@ abstract class GlideTestCase {
     TrueImageRequests.glide(app)
     network = FakeNetwork()
     Glide.get(app).registry.replace(GlideUrl::class.java, InputStream::class.java, network.Factory())
+    TrueImageBlur.evictAll()
   }
 
   @After

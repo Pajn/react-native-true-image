@@ -55,6 +55,11 @@ class TrueImageViewManager :
     view.blurRadius = value
   }
 
+  @ReactProp(name = "blurPixelsPerRadius", defaultFloat = Blur.DEFAULT_PIXELS_PER_RADIUS)
+  override fun setBlurPixelsPerRadius(view: TrueImageView, value: Float) {
+    view.blurPixelsPerRadius = value
+  }
+
   @ReactProp(name = "tintColor", customType = "Color")
   override fun setTintColor(view: TrueImageView, value: Int?) {
     view.tintColor = value

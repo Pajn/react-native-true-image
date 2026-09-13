@@ -3,6 +3,7 @@ import { Image as RNImage, StyleSheet, type HostInstance } from 'react-native';
 import NativeTrueImage from './specs/NativeTrueImage';
 import TrueImageView from './specs/TrueImageViewNativeComponent';
 import {
+  DEFAULT_BLUR_PIXELS_PER_RADIUS,
   DEFAULT_TRANSITION,
   type ImageErrorEvent,
   type ImageLoadEvent,
@@ -72,6 +73,7 @@ function ImageComponent({
   transition,
   resizeMode = 'cover',
   blurRadius = 0,
+  blurPixelsPerRadius = DEFAULT_BLUR_PIXELS_PER_RADIUS,
   onLoad,
   onError,
   onDisplay,
@@ -118,6 +120,7 @@ function ImageComponent({
       transition={resolveTransition(source, transition)}
       resizeMode={resizeMode}
       blurRadius={blurRadius}
+      blurPixelsPerRadius={blurPixelsPerRadius}
       style={[styles.image, style]}
       {...handlers}
     />

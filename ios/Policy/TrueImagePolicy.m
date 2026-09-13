@@ -43,9 +43,32 @@ BOOL TrueImageThumbnailPixelSize(
   return YES;
 }
 
-NSString *TrueImageThumbnailKey(NSString *source, CGFloat blurRadius, CGSize pixelSize)
+NSString *TrueImageThumbnailKey(NSString *source, CGFloat blurRadius, CGFloat blurDownscale, CGSize pixelSize)
 {
-  return [NSString stringWithFormat:@"%@|b%g|%dx%d", source, (double)blurRadius, (int)pixelSize.width, (int)pixelSize.height];
+  return [NSString stringWithFormat:@"%@|b%g|d%g|%dx%d",
+                                    source,
+                                    (double)blurRadius,
+                                    (double)blurDownscale,
+                                    (int)pixelSize.width,
+                                    (int)pixelSize.height];
+}
+
+CGFloat const TrueImageDefaultBlurPixelsPerRadius = 2;
+
+CGFloat TrueImageBlurDownscaleFactor(CGFloat blurRadius, CGFloat pixelsPerRadius)
+{
+  if (blurRadius <= 0 || pixelsPerRadius <= 0) {
+    return 1;
+  }
+  return MAX(1, blurRadius / pixelsPerRadius);
+}
+
+CGSize TrueImageBlurDownscaleSize(CGSize pixels, CGFloat factor)
+{
+  if (factor <= 1) {
+    return pixels;
+  }
+  return CGSizeMake(MAX(1, ceil(pixels.width / factor)), MAX(1, ceil(pixels.height / factor)));
 }
 
 NSUInteger TrueImageMemoryCacheCost(unsigned long long physicalMemory)

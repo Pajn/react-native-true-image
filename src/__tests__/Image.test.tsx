@@ -195,6 +195,13 @@ describe('props', () => {
     expect(nativeProps().blurRadius).toBe(0);
   });
 
+  it('defaults blurPixelsPerRadius to 2 and passes an override through', async () => {
+    await render(<Image source="https://x/a.jpg" />);
+    expect(nativeProps().blurPixelsPerRadius).toBe(2);
+    await render(<Image source="https://x/a.jpg" blurPixelsPerRadius={0} />);
+    expect(nativeProps().blurPixelsPerRadius).toBe(0);
+  });
+
   it('puts overflow hidden before the caller style so callers can override', async () => {
     await render(
       <Image source="https://x/a.jpg" style={{ overflow: 'visible' }} />

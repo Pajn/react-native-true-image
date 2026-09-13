@@ -2,6 +2,7 @@
 
 #import <SDWebImage/SDWebImage.h>
 
+#import "TrueImageBlurTransformer.h"
 #import "TrueImagePolicy.h"
 #import "TrueImageWebPCoder.h"
 
@@ -22,7 +23,8 @@ static SDWebImageContext *BaseContext(void)
   return context;
 }
 
-static SDWebImageContext *ContextFor(CGFloat blurRadius, NSDictionary<NSString *, NSString *> *headers)
+static SDWebImageContext *ContextFor(
+    CGFloat blurRadius, CGFloat blurDownscale, NSDictionary<NSString *, NSString *> *headers)
 {
   if (blurRadius <= 0 && headers.count == 0) {
     return BaseContext();
@@ -31,7 +33,8 @@ static SDWebImageContext *ContextFor(CGFloat blurRadius, NSDictionary<NSString *
   if (blurRadius > 0) {
     // The transformer gets its own cache key; the sharp original stays cached
     // and is reused as the transform input.
-    context[SDWebImageContextImageTransformer] = [SDImageBlurTransformer transformerWithRadius:blurRadius];
+    context[SDWebImageContextImageTransformer] =
+        [TrueImageBlurTransformer transformerWithRadius:blurRadius downscale:blurDownscale];
   }
   if (headers.count > 0) {
     // A request modifier is not part of the cache key: the same URL is one
@@ -84,13 +87,14 @@ static SDWebImageManager *Manager(void)
 
 + (id)loadURL:(NSURL *)url
      blurRadius:(CGFloat)blurRadius
+  blurDownscale:(CGFloat)blurDownscale
         headers:(NSDictionary<NSString *, NSString *> *)headers
      completion:(TrueImageLoadCompletion)completion
 {
   return [Manager()
        loadImageWithURL:url
                 options:kOptions
-                context:ContextFor(blurRadius, headers)
+                context:ContextFor(blurRadius, blurDownscale, headers)
                progress:nil
               completed:^(UIImage *image, NSData *data, NSError *error, SDImageCacheType cacheType, BOOL finished, NSURL *imageURL) {
                 if (!finished) {
@@ -128,7 +132,7 @@ static SDWebImageManager *Manager(void)
   for (TrueImagePrefetchRequest *request in requests) {
     [Manager() loadImageWithURL:request.url
                         options:kOptions
-                        context:ContextFor(0, request.headers)
+                        context:ContextFor(0, 1, request.headers)
                        progress:nil
                       completed:^(UIImage *image, NSData *data, NSError *error, SDImageCacheType cacheType, BOOL finished, NSURL *imageURL) {
                         if (!finished) {

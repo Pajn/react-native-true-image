@@ -41,6 +41,11 @@ export interface NativeProps extends ViewProps {
   transition?: CodegenTypes.WithDefault<CodegenTypes.Int32, 0>;
   /** Gaussian blur radius in source-image pixels. */
   blurRadius?: CodegenTypes.WithDefault<CodegenTypes.Float, 0>;
+  /**
+   * Pixels the blur radius spans after the image is shrunk for blurring.
+   * 0 blurs at full size.
+   */
+  blurPixelsPerRadius?: CodegenTypes.WithDefault<CodegenTypes.Float, 2>;
   tintColor?: ColorValue;
   recyclingKey?: string;
 

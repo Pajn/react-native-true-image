@@ -1,15 +1,11 @@
 package com.trueimage
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PaintFlagsDrawFilter
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import android.os.Build
 import android.view.View
 import android.view.animation.AnimationUtils
 import com.bumptech.glide.load.DataSource
@@ -24,7 +20,6 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.uimanager.BackgroundStyleApplicator
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.events.Event
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
@@ -41,7 +36,10 @@ class TrueImageView(context: Context) : View(context) {
   var fitMode: FitMode = FitMode.COVER
   /** Fade duration in milliseconds. */
   var transitionMs: Int = 0
+  /** In source-image pixels. */
   var blurRadius: Float = 0f
+  /** Pixels the blur radius spans after the pre-blur shrink; 0 blurs at full size. */
+  var blurPixelsPerRadius: Float = Blur.DEFAULT_PIXELS_PER_RADIUS
   var tintColor: Int? = null
   var recyclingKey: String? = null
 
@@ -49,11 +47,19 @@ class TrueImageView(context: Context) : View(context) {
 
   private data class Request(val source: String)
 
-  /** One image and the Glide target that owns its bitmap. */
+  /**
+   * One image and the Glide target that owns its bitmap. A blurred image
+   * keeps the sharp original as the source for re-blurs and as the size the
+   * fit is computed from; [blurred] is what gets drawn.
+   */
   private class Layer(val request: Request, val fromResource: Boolean) {
     var drawable: Drawable? = null
     var target: Target<Drawable>? = null
     var fromMemory = false
+    var blurred: Drawable? = null
+    var blurKey: String? = null
+
+    val display: Drawable? get() = blurred ?: drawable
   }
 
   private var current: Layer? = null
@@ -66,7 +72,7 @@ class TrueImageView(context: Context) : View(context) {
   private var appliedFitMode = FitMode.COVER
   private var appliedTint: Int? = null
   private var appliedBlur = 0f
-  private var blurStandIn: Pair<Layer, Drawable>? = null
+  private var appliedBlurPixelsPerRadius = Blur.DEFAULT_PIXELS_PER_RADIUS
 
   private val filter = PaintFlagsDrawFilter(0, Paint.FILTER_BITMAP_FLAG)
 
@@ -76,8 +82,8 @@ class TrueImageView(context: Context) : View(context) {
   internal val hasImage: Boolean get() = current?.drawable != null
   internal val isCrossfading: Boolean get() = crossfade != null
   internal val hasPendingLoad: Boolean get() = pending != null
-  internal val hasBlurStandIn: Boolean get() = blurStandIn != null
   internal val currentDrawable: Drawable? get() = current?.drawable
+  internal val currentBlurred: Drawable? get() = current?.blurred
   internal val fadeAlpha: Float? get() = crossfade?.alpha(now())
 
   init {
@@ -98,21 +104,19 @@ class TrueImageView(context: Context) : View(context) {
     }
     if (fitMode != appliedFitMode) {
       appliedFitMode = fitMode
-      blurStandIn = null
-      updateRenderEffect()
       invalidate()
     }
     if (tintColor != appliedTint) {
       appliedTint = tintColor
       applyTint(current)
       applyTint(previous)
+      current?.let { if (it.blurred != null) reblur(it) }
       invalidate()
     }
-    if (blurRadius != appliedBlur) {
+    if (blurRadius != appliedBlur || blurPixelsPerRadius != appliedBlurPixelsPerRadius) {
       appliedBlur = blurRadius
-      blurStandIn = null
-      updateRenderEffect()
-      invalidate()
+      appliedBlurPixelsPerRadius = blurPixelsPerRadius
+      current?.let { reblur(it) }
     }
 
     val src = source
@@ -137,7 +141,6 @@ class TrueImageView(context: Context) : View(context) {
     releaseLayer(current)
     previous = null
     current = null
-    blurStandIn = null
   }
 
   override fun onAttachedToWindow() {
@@ -145,12 +148,6 @@ class TrueImageView(context: Context) : View(context) {
     // A recycling key may have cleared this view while it was detached.
     val src = source
     if (src != null && current == null && pending == null) load(Request(src))
-  }
-
-  override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-    super.onSizeChanged(w, h, oldw, oldh)
-    blurStandIn = null
-    updateRenderEffect()
   }
 
   // MARK: Loading
@@ -163,7 +160,8 @@ class TrueImageView(context: Context) : View(context) {
       val layer = Layer(request, fromResource = true)
       layer.drawable = vector.mutate()
       layer.fromMemory = true
-      show(layer)
+      pending = layer
+      present(layer)
       return
     }
 
@@ -179,10 +177,9 @@ class TrueImageView(context: Context) : View(context) {
       override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
         // A stale target (superseded by a newer source) is silent.
         if (pending !== layer) return
-        pending = null
         // Two views sharing one cached drawable must not share alpha.
         layer.drawable = resource.mutate()
-        show(layer)
+        present(layer)
       }
 
       override fun onLoadFailed(errorDrawable: Drawable?) {
@@ -245,12 +242,79 @@ class TrueImageView(context: Context) : View(context) {
     releaseLayer(current)
     previous = null
     current = null
-    blurStandIn = null
-    updateRenderEffect()
     invalidate()
   }
 
   // MARK: Display
+
+  /**
+   * Shows a loaded layer, blurring it first when a blur is set. The blurred
+   * copy is what appears; the sharp original never draws, so a blurred image
+   * arriving late never flashes sharp. The layer stays pending until then so
+   * a newer source cancels it.
+   */
+  private fun present(layer: Layer) {
+    val drawable = layer.drawable ?: return
+    applyTint(layer)
+    if (blurRadius <= 0f) {
+      pending = null
+      show(layer)
+      return
+    }
+    val factor = Blur.downscaleFactor(blurRadius, blurPixelsPerRadius)
+    val key = TrueImageBlur.key(layer.request.source, blurRadius, factor, tintOf(layer))
+    TrueImageBlur.cached(key)?.let {
+      layer.blurred = BitmapDrawable(resources, it)
+      layer.blurKey = key
+      pending = null
+      show(layer)
+      return
+    }
+    TrueImageBlur.make(drawable, blurRadius, factor, key) { bitmap ->
+      if (pending !== layer) return@make
+      pending = null
+      if (bitmap != null) {
+        layer.blurred = BitmapDrawable(resources, bitmap)
+        layer.blurKey = key
+      }
+      show(layer)
+    }
+  }
+
+  /**
+   * A blur change on a displayed image re-blurs the sharp original it kept.
+   * The old blur stays up until the new one is ready; only clearing the blur
+   * switches at once, since the sharp image is already there.
+   */
+  private fun reblur(layer: Layer) {
+    val drawable = layer.drawable ?: return
+    if (blurRadius <= 0f) {
+      layer.blurred = null
+      layer.blurKey = null
+      invalidate()
+      return
+    }
+    val factor = Blur.downscaleFactor(blurRadius, blurPixelsPerRadius)
+    val key = TrueImageBlur.key(layer.request.source, blurRadius, factor, tintOf(layer))
+    if (key == layer.blurKey) return
+    TrueImageBlur.cached(key)?.let {
+      layer.blurred = BitmapDrawable(resources, it)
+      layer.blurKey = key
+      invalidate()
+      return
+    }
+    TrueImageBlur.make(drawable, blurRadius, factor, key) { bitmap ->
+      // Stale if the image changed, or a later blur change already landed.
+      if (current !== layer || bitmap == null) return@make
+      val wanted = TrueImageBlur.key(
+        layer.request.source, blurRadius, Blur.downscaleFactor(blurRadius, blurPixelsPerRadius), tintOf(layer),
+      )
+      if (wanted != key) return@make
+      layer.blurred = BitmapDrawable(resources, bitmap)
+      layer.blurKey = key
+      invalidate()
+    }
+  }
 
   private fun show(layer: Layer) {
     val drawable = layer.drawable ?: return
@@ -281,8 +345,6 @@ class TrueImageView(context: Context) : View(context) {
       releaseLayer(current)
     }
     current = layer
-    blurStandIn = null
-    updateRenderEffect()
 
     if (fade) {
       // The interrupted crossfade never completes, so it never reports
@@ -293,12 +355,15 @@ class TrueImageView(context: Context) : View(context) {
       postInvalidateOnAnimation()
     } else {
       crossfade = null
-      drawable.alpha = 255
+      layer.display?.alpha = 255
       emitDisplay()
       emitDisplayEnd()
       invalidate()
     }
   }
+
+  /** Tints apply to native resources only, so only their blur keys carry one. */
+  private fun tintOf(layer: Layer): Int? = if (layer.fromResource) tintColor else null
 
   private fun applyTint(layer: Layer?) {
     val drawable = layer?.drawable ?: return
@@ -317,8 +382,8 @@ class TrueImageView(context: Context) : View(context) {
     val now = now()
     val alpha = fade?.alpha(now) ?: 1f
 
-    previous?.drawable?.let { draw(canvas, it, 1f - alpha) }
-    current?.let { layer -> layer.drawable?.let { draw(canvas, standIn(layer, it), alpha) } }
+    previous?.let { draw(canvas, it, 1f - alpha) }
+    current?.let { draw(canvas, it, alpha) }
 
     if (fade != null) {
       if (fade.isDone(now)) {
@@ -332,10 +397,13 @@ class TrueImageView(context: Context) : View(context) {
     }
   }
 
-  private fun draw(canvas: Canvas, drawable: Drawable, alpha: Float) {
+  /** The fit comes from the sharp original's size; a blurred copy is stretched into the same rect. */
+  private fun draw(canvas: Canvas, layer: Layer, alpha: Float) {
+    val source = layer.drawable ?: return
+    val drawable = layer.display ?: return
     val rect = Fit.rect(
       width.toFloat(), height.toFloat(),
-      drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat(),
+      source.intrinsicWidth.toFloat(), source.intrinsicHeight.toFloat(),
       fitMode,
     )
     drawable.setBounds(
@@ -344,50 +412,6 @@ class TrueImageView(context: Context) : View(context) {
     )
     drawable.alpha = (alpha.coerceIn(0f, 1f) * 255f).roundToInt()
     drawable.draw(canvas)
-  }
-
-  // MARK: Blur
-
-  private fun sigmaPx(drawable: Drawable): Float {
-    val drawn = Fit.rect(
-      width.toFloat(), height.toFloat(),
-      drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat(),
-      fitMode,
-    )
-    return Blur.sigmaPx(
-      blurRadius, drawn.width, drawable.intrinsicWidth.toFloat(),
-      resources.displayMetrics.density,
-    )
-  }
-
-  /** API 31+: blur the view itself, scaled from source pixels to view pixels. */
-  private fun updateRenderEffect() {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-    val drawable = current?.drawable
-    val sigma = if (drawable == null || width == 0) 0f else sigmaPx(drawable)
-    setRenderEffect(
-      if (sigma > 0f) RenderEffect.createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP) else null,
-    )
-  }
-
-  /**
-   * Below API 31 a downscaled copy drawn back up with bitmap filtering stands
-   * in for a blur. Cached per image; dropped on size and radius changes.
-   */
-  private fun standIn(layer: Layer, drawable: Drawable): Drawable {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S || blurRadius <= 0f) return drawable
-    blurStandIn?.let { (owner, cached) -> if (owner === layer) return cached }
-    val factor = Blur.standInFactor(sigmaPx(drawable))
-    if (factor <= 1f || drawable.intrinsicWidth <= 0 || drawable.intrinsicHeight <= 0) return drawable
-    val w = max(1, (drawable.intrinsicWidth / factor).roundToInt())
-    val h = max(1, (drawable.intrinsicHeight / factor).roundToInt())
-    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    drawable.setBounds(0, 0, w, h)
-    drawable.alpha = 255
-    drawable.draw(Canvas(bitmap))
-    val result = BitmapDrawable(resources, bitmap).apply { isFilterBitmap = true }
-    blurStandIn = layer to result
-    return result
   }
 
   // MARK: Events

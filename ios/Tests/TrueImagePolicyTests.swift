@@ -67,12 +67,41 @@ final class ThumbnailTests: XCTestCase {
 
   func testKeyVariesWithSourceBlurAndSize() {
     let size = CGSize(width: 100, height: 100)
-    let a = TrueImageThumbnailKey("https://x/a.jpg", 0, size)
-    let b = TrueImageThumbnailKey("https://x/b.jpg", 0, size)
-    let c = TrueImageThumbnailKey("https://x/a.jpg", 25, size)
-    let d = TrueImageThumbnailKey("https://x/a.jpg", 0, CGSize(width: 200, height: 200))
-    XCTAssertEqual(Set([a, b, c, d]).count, 4)
-    XCTAssertEqual(a, TrueImageThumbnailKey("https://x/a.jpg", 0, size))
+    let a = TrueImageThumbnailKey("https://x/a.jpg", 0, 1, size)
+    let b = TrueImageThumbnailKey("https://x/b.jpg", 0, 1, size)
+    let c = TrueImageThumbnailKey("https://x/a.jpg", 25, 1, size)
+    let d = TrueImageThumbnailKey("https://x/a.jpg", 0, 1, CGSize(width: 200, height: 200))
+    let e = TrueImageThumbnailKey("https://x/a.jpg", 25, 12.5, size)
+    XCTAssertEqual(Set([a, b, c, d, e]).count, 5)
+    XCTAssertEqual(a, TrueImageThumbnailKey("https://x/a.jpg", 0, 1, size))
+  }
+}
+
+final class BlurDownscaleTests: XCTestCase {
+  func testDefaultKeepsTwoPixelsPerRadius() {
+    XCTAssertEqual(TrueImageDefaultBlurPixelsPerRadius, 2)
+    XCTAssertEqual(TrueImageBlurDownscaleFactor(100, TrueImageDefaultBlurPixelsPerRadius), 50)
+  }
+
+  func testMorePixelsPerRadiusShrinksLess() {
+    XCTAssertEqual(TrueImageBlurDownscaleFactor(100, 4), 25)
+  }
+
+  func testNeverUpscales() {
+    XCTAssertEqual(TrueImageBlurDownscaleFactor(1, 2), 1)
+    XCTAssertEqual(TrueImageBlurDownscaleFactor(0, 2), 1)
+  }
+
+  func testZeroPixelsPerRadiusDisablesTheShrink() {
+    XCTAssertEqual(TrueImageBlurDownscaleFactor(100, 0), 1)
+    XCTAssertEqual(TrueImageBlurDownscaleFactor(100, -1), 1)
+  }
+
+  func testSizeRoundsUpAndStaysAtLeastOnePixel() {
+    XCTAssertEqual(
+      TrueImageBlurDownscaleSize(CGSize(width: 4000, height: 3000), 50), CGSize(width: 80, height: 60))
+    XCTAssertEqual(TrueImageBlurDownscaleSize(CGSize(width: 101, height: 10), 50), CGSize(width: 3, height: 1))
+    XCTAssertEqual(TrueImageBlurDownscaleSize(CGSize(width: 10, height: 10), 1), CGSize(width: 10, height: 10))
   }
 }
 

@@ -21,8 +21,11 @@ typedef void (^TrueImageLoadCompletion)(UIImage *_Nullable image, BOOL fromMemor
 
 /// Returns a cancellable token. A memory hit calls `completion` synchronously.
 /// Headers are sent with the request and are not part of the cache key.
+/// A blurred load shrinks the cached original by `blurDownscale` before
+/// blurring; see TrueImageBlurTransformer and TrueImageBlurDownscaleFactor.
 + (nullable id)loadURL:(NSURL *)url
             blurRadius:(CGFloat)blurRadius
+         blurDownscale:(CGFloat)blurDownscale
                headers:(nullable NSDictionary<NSString *, NSString *> *)headers
             completion:(TrueImageLoadCompletion)completion;
 

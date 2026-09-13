@@ -8,14 +8,19 @@
 
 static NSString *const kFadeKey = @"fade";
 
-/// Identifies one load: the same source at a different blur is a different image.
+/// Identifies one load: the same source at a different blur, or blurred
+/// from a differently shrunk copy, is a different image. Carries the
+/// resolved shrink factor rather than the prop so a prop change that leaves
+/// the factor alone (no blur, or a radius too small to shrink) is not a load.
 struct TrueImageRequest {
   NSString *source;
   CGFloat blurRadius;
+  CGFloat blurDownscale;
 
   bool operator==(const TrueImageRequest &other) const
   {
-    return blurRadius == other.blurRadius && [source isEqualToString:other.source];
+    return blurRadius == other.blurRadius && blurDownscale == other.blurDownscale &&
+        [source isEqualToString:other.source];
   }
 };
 
@@ -83,6 +88,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
     [self.layer addSublayer:_imageLayer];
     _fitMode = TrueImageFitModeCover;
     _appliedFitMode = TrueImageFitModeCover;
+    _blurPixelsPerRadius = TrueImageDefaultBlurPixelsPerRadius;
     _loadedKind = TrueImageKind::None;
     [self applyGravity];
   }
@@ -163,7 +169,8 @@ enum class TrueImageKind { None, Bitmap, Resource };
     [self clear];
     return;
   }
-  TrueImageRequest request{_source, _blurRadius};
+  TrueImageRequest request{
+      _source, _blurRadius, TrueImageBlurDownscaleFactor(_blurRadius, _blurPixelsPerRadius)};
   if (_loadedKind != TrueImageKind::None && _loadedRequest == request) {
     [self cancelPending];
     return;
@@ -183,6 +190,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   _appliedRecyclingKey = nil;
   _transition = 0;
   _blurRadius = 0;
+  _blurPixelsPerRadius = TrueImageDefaultBlurPixelsPerRadius;
   _tint = nil;
   _appliedTint = nil;
   _fitMode = TrueImageFitModeCover;
@@ -211,6 +219,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   __weak __typeof(self) weakSelf = self;
   id token = [TrueImageLoader loadURL:url
                            blurRadius:request.blurRadius
+                        blurDownscale:request.blurDownscale
                               headers:_headers
                            completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
                              __typeof(self) self = weakSelf;
@@ -396,7 +405,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   if (!TrueImageThumbnailPixelSize(pixels, self.bounds.size, [self displayScale], _fitMode, &size)) {
     return;
   }
-  NSString *key = TrueImageThumbnailKey(request.source, request.blurRadius, size);
+  NSString *key = TrueImageThumbnailKey(request.source, request.blurRadius, request.blurDownscale, size);
   if ([key isEqualToString:_thumbnailKey]) {
     return;
   }

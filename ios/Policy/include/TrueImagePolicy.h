@@ -33,7 +33,22 @@ FOUNDATION_EXPORT BOOL TrueImageThumbnailPixelSize(
 
 /// Cache key for a resampled thumbnail. Varies with the source, the blur and
 /// the target size so a resize or a blur change never reuses a stale one.
-FOUNDATION_EXPORT NSString *TrueImageThumbnailKey(NSString *source, CGFloat blurRadius, CGSize pixelSize);
+FOUNDATION_EXPORT NSString *TrueImageThumbnailKey(
+    NSString *source, CGFloat blurRadius, CGFloat blurDownscale, CGSize pixelSize);
+
+/// Default for `blurPixelsPerRadius`: the blur radius spans two pixels of
+/// the shrunk image, which is under a pixel of error in the final blur.
+FOUNDATION_EXPORT CGFloat const TrueImageDefaultBlurPixelsPerRadius;
+
+/// Factor to shrink an image by before blurring it. A Gaussian blur removes
+/// every detail finer than its radius, so blurring a copy shrunk until the
+/// radius spans `pixelsPerRadius` pixels looks the same and costs a small
+/// fraction as much. 1 (no shrink) for a radius already that small or when
+/// `pixelsPerRadius` is zero or negative, which disables the shrink.
+FOUNDATION_EXPORT CGFloat TrueImageBlurDownscaleFactor(CGFloat blurRadius, CGFloat pixelsPerRadius);
+
+/// `pixels` shrunk by `factor`, rounded up and never below one pixel.
+FOUNDATION_EXPORT CGSize TrueImageBlurDownscaleSize(CGSize pixels, CGFloat factor);
 
 /// Memory cache ceiling: a sixteenth of physical memory, capped at 256 MB.
 /// Set because low-memory devices running long sessions were being

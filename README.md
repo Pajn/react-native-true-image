@@ -72,6 +72,7 @@ Clipping relies on the default `overflow: 'hidden'`; overriding it to
 | `resizeMode` | `'cover'` | `cover`, `contain`, `stretch`, `center` |
 | `transition` | 300 ms for URLs, 0 for assets | Fade duration in milliseconds |
 | `blurRadius` | 0 | In source-image pixels, so the same value looks the same on both platforms |
+| `blurPixelsPerRadius` | 2 | Pixels the blur radius spans after the pre-blur shrink; `0` blurs at full size. See [Blur cost](#blur-cost) |
 | `tintColor` | | Native resources only |
 | `recyclingKey` | | Clears the view synchronously when it changes, before the next source loads |
 
@@ -99,6 +100,30 @@ On Android the prefetch loop runs on a background thread: each load is
 started with `submit()` and awaited there, and the main looper sees a single
 post per batch. Prefetches usually race the mount work they feed, so they
 stay out of its queue.
+
+## Blur cost
+
+A Gaussian blur erases every detail finer than its radius, so blurring a
+copy shrunk until the radius spans a couple of pixels looks the same as
+blurring the original. `blurPixelsPerRadius` sets how many pixels that is.
+With the default of 2, a radius of 100 shrinks the image fifty times per
+axis and blurs it with a radius of 2. Raise it to keep more detail in the
+blurred image, or set it to `0` to blur at full size.
+
+Both platforms blur once, off the main thread, and then draw the blurred
+bitmap like any other. A crossfade between blurred images is two bitmap
+draws per frame, with no per-frame filter: a blur is linear, so fading
+between two blurred images is pixel-identical to blurring the fade. A
+blurred image is never shown sharp first; it appears once the blur is done.
+
+On iOS the shrink runs inside the SDWebImage transform and the result is
+cached under a key that includes the shrink factor. The sharp original stays
+cached and is the transform input, so a blurred view still reuses a
+prefetch. On Android the view blurs the drawable Glide hands it, so the
+request and its memory cache entry stay identical to the prefetch, and a
+small cache keyed on source, radius and factor makes the blur a synchronous
+hit for recycled rows. The two blurs use the same three-pass box
+approximation of a Gaussian, so one radius looks the same on both.
 
 ## Android: parallel decoding of disk-cached images
 

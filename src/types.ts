@@ -47,6 +47,15 @@ export interface ImageProps extends ViewProps {
   transition?: number;
   /** Gaussian blur radius in source-image pixels. */
   blurRadius?: number;
+  /**
+   * How much detail a blur keeps. Before blurring, the image is shrunk until
+   * `blurRadius` spans this many pixels, and the blur runs on the small
+   * copy: a blur erases everything finer than its radius, so the result
+   * looks the same and a large blur of a large image costs a fraction as
+   * much. Higher keeps more pixels and costs more; `0` blurs at full size.
+   * Defaults to `DEFAULT_BLUR_PIXELS_PER_RADIUS`.
+   */
+  blurPixelsPerRadius?: number;
   /** Applied to native resource images only; remote bitmaps are never tinted. */
   tintColor?: ColorValue;
   /**
@@ -71,3 +80,10 @@ export interface ImageProps extends ViewProps {
 
 /** Fade duration in milliseconds applied to URL sources when `transition` is omitted. */
 export const DEFAULT_TRANSITION = 300;
+
+/**
+ * Pixels the blur radius spans after the pre-blur shrink when
+ * `blurPixelsPerRadius` is omitted. Two is under a pixel of error in the
+ * blurred result.
+ */
+export const DEFAULT_BLUR_PIXELS_PER_RADIUS = 2;

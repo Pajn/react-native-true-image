@@ -1,7 +1,11 @@
 package com.trueimage
 
+import kotlin.math.PI
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * Pure geometry and policy shared by the view and the unit tests.
@@ -70,19 +74,108 @@ class Crossfade(
 
 object Blur {
   /**
-   * `blurRadius` is expressed in source-image pixels so the same value blurs
-   * the same picture the same way on every platform. Android blurs the view,
-   * so the radius is scaled by the factor the image is drawn at. Unknown
-   * intrinsic size falls back to density-independent pixels.
+   * Pixels the blur radius spans after the pre-blur shrink when
+   * `blurPixelsPerRadius` is omitted. The same default as iOS.
    */
-  fun sigmaPx(radius: Float, drawnWidthPx: Float, intrinsicWidthPx: Float, density: Float): Float {
-    if (radius <= 0f) return 0f
-    if (intrinsicWidthPx <= 0f || drawnWidthPx <= 0f) return radius * density
-    return radius * drawnWidthPx / intrinsicWidthPx
+  const val DEFAULT_PIXELS_PER_RADIUS = 2f
+
+  /**
+   * Factor to shrink an image by before blurring it. A Gaussian blur removes
+   * every detail finer than its radius, so blurring a copy shrunk until the
+   * radius spans [pixelsPerRadius] pixels looks the same and costs a small
+   * fraction as much. 1 (no shrink) for a radius already that small, or when
+   * [pixelsPerRadius] is zero or negative, which disables the shrink.
+   */
+  fun downscaleFactor(radius: Float, pixelsPerRadius: Float): Float {
+    if (radius <= 0f || pixelsPerRadius <= 0f) return 1f
+    return max(1f, radius / pixelsPerRadius)
   }
 
-  /** Downscale factor for the pre-API-31 stand-in that approximates a blur. */
-  fun standInFactor(sigmaPx: Float): Float = max(1f, sigmaPx / 2f)
+  /** The size shrunk by [factor], rounded up and never below one pixel. */
+  fun downscaleSize(width: Int, height: Int, factor: Float): Pair<Int, Int> {
+    if (factor <= 1f) return width to height
+    return max(1, ceil(width / factor).toInt()) to max(1, ceil(height / factor).toInt())
+  }
+
+  /**
+   * Width of each of the three box passes that approximate a Gaussian of
+   * [sigma]. The same formula as the iOS blur, so one radius looks the same
+   * on both platforms. Always odd; 0 means no blur.
+   */
+  fun boxSize(sigma: Float): Int {
+    if (sigma <= 0f) return 0
+    var size = floor(sigma * 3f * sqrt(2f * PI.toFloat()) / 4f + 0.5f).toInt()
+    if (size % 2 == 0) size++
+    return max(1, size)
+  }
+
+  /**
+   * Gaussian blur of non-premultiplied ARGB pixels in place, as three box
+   * passes per axis with edge pixels extended. Blurs premultiplied colour so
+   * transparent pixels do not bleed their colour into their neighbours. Runs
+   * in time proportional to the pixel count whatever the sigma.
+   */
+  fun blur(pixels: IntArray, width: Int, height: Int, sigma: Float) {
+    val box = boxSize(sigma)
+    if (box <= 1 || width <= 0 || height <= 0) return
+    val n = width * height
+    val a = IntArray(n)
+    val r = IntArray(n)
+    val g = IntArray(n)
+    val b = IntArray(n)
+    for (i in 0 until n) {
+      val p = pixels[i]
+      val alpha = (p ushr 24) and 0xff
+      a[i] = alpha
+      r[i] = ((p ushr 16) and 0xff) * alpha / 255
+      g[i] = ((p ushr 8) and 0xff) * alpha / 255
+      b[i] = (p and 0xff) * alpha / 255
+    }
+    val scratch = IntArray(n)
+    for (channel in arrayOf(a, r, g, b)) {
+      repeat(3) {
+        boxRows(channel, scratch, width, height, box)
+        boxColumns(scratch, channel, width, height, box)
+      }
+    }
+    for (i in 0 until n) {
+      val alpha = a[i]
+      if (alpha == 0) {
+        pixels[i] = 0
+        continue
+      }
+      val red = min(255, r[i] * 255 / alpha)
+      val green = min(255, g[i] * 255 / alpha)
+      val blue = min(255, b[i] * 255 / alpha)
+      pixels[i] = (alpha shl 24) or (red shl 16) or (green shl 8) or blue
+    }
+  }
+
+  private fun boxRows(src: IntArray, dst: IntArray, width: Int, height: Int, box: Int) {
+    val radius = box / 2
+    for (y in 0 until height) {
+      val row = y * width
+      var sum = 0
+      for (k in -radius..radius) sum += src[row + k.coerceIn(0, width - 1)]
+      for (x in 0 until width) {
+        dst[row + x] = (sum + box / 2) / box
+        sum += src[row + (x + radius + 1).coerceIn(0, width - 1)] - src[row + (x - radius).coerceIn(0, width - 1)]
+      }
+    }
+  }
+
+  private fun boxColumns(src: IntArray, dst: IntArray, width: Int, height: Int, box: Int) {
+    val radius = box / 2
+    for (x in 0 until width) {
+      var sum = 0
+      for (k in -radius..radius) sum += src[k.coerceIn(0, height - 1) * width + x]
+      for (y in 0 until height) {
+        dst[y * width + x] = (sum + box / 2) / box
+        sum += src[(y + radius + 1).coerceIn(0, height - 1) * width + x] -
+          src[(y - radius).coerceIn(0, height - 1) * width + x]
+      }
+    }
+  }
 }
 
 enum class SourceKind { REMOTE, RESOURCE, URI }

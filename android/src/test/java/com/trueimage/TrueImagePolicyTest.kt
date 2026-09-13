@@ -1,5 +1,6 @@
 package com.trueimage
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -77,28 +78,76 @@ class CrossfadeTest {
 
 class BlurTest {
   @Test
-  fun zeroRadiusHasNoEffect() {
-    assertEquals(0f, Blur.sigmaPx(0f, 300f, 600f, 3f), 0f)
+  fun downscaleFactorKeepsTheRequestedPixelsPerRadius() {
+    assertEquals(50f, Blur.downscaleFactor(100f, Blur.DEFAULT_PIXELS_PER_RADIUS), 0f)
+    assertEquals(25f, Blur.downscaleFactor(100f, 4f), 0f)
   }
 
   @Test
-  fun scalesWithDrawScale() {
-    // Same radius, same image, twice the view size → twice the sigma.
-    val small = Blur.sigmaPx(20f, 300f, 600f, 3f)
-    val large = Blur.sigmaPx(20f, 600f, 600f, 3f)
-    assertEquals(10f, small, 0.001f)
-    assertEquals(20f, large, 0.001f)
+  fun downscaleFactorNeverUpscales() {
+    assertEquals(1f, Blur.downscaleFactor(1f, 2f), 0f)
+    assertEquals(1f, Blur.downscaleFactor(0f, 2f), 0f)
   }
 
   @Test
-  fun unknownIntrinsicFallsBackToDensity() {
-    assertEquals(60f, Blur.sigmaPx(20f, 300f, 0f, 3f), 0.001f)
+  fun zeroPixelsPerRadiusDisablesTheShrink() {
+    assertEquals(1f, Blur.downscaleFactor(100f, 0f), 0f)
+    assertEquals(1f, Blur.downscaleFactor(100f, -1f), 0f)
   }
 
   @Test
-  fun standInFactorNeverUpscales() {
-    assertEquals(1f, Blur.standInFactor(0.5f), 0f)
-    assertEquals(4f, Blur.standInFactor(8f), 0f)
+  fun downscaleSizeRoundsUpAndStaysAtLeastOnePixel() {
+    assertEquals(80 to 60, Blur.downscaleSize(4000, 3000, 50f))
+    assertEquals(3 to 1, Blur.downscaleSize(101, 10, 50f))
+    assertEquals(10 to 10, Blur.downscaleSize(10, 10, 1f))
+  }
+
+  @Test
+  fun boxSizeIsOddAndZeroForNoBlur() {
+    assertEquals(0, Blur.boxSize(0f))
+    for (sigma in listOf(0.5f, 1f, 2f, 7f, 100f)) assertEquals(1, Blur.boxSize(sigma) % 2)
+    assertTrue(Blur.boxSize(100f) > Blur.boxSize(2f))
+  }
+
+  @Test
+  fun blurLeavesAFlatImageAlone() {
+    val pixels = IntArray(16) { 0xffc83232.toInt() }
+    Blur.blur(pixels, 4, 4, 3f)
+    assertTrue(pixels.all { it == 0xffc83232.toInt() })
+  }
+
+  @Test
+  fun blurSpreadsASpikeSymmetrically() {
+    // A white pixel on opaque black.
+    val w = 9
+    val pixels = IntArray(w * w) { 0xff000000.toInt() }
+    pixels[4 * w + 4] = 0xffffffff.toInt()
+    Blur.blur(pixels, w, w, 1f)
+    val centre = pixels[4 * w + 4] and 0xff
+    assertTrue(centre in 1..254)
+    assertEquals(pixels[4 * w + 3], pixels[4 * w + 5])
+    assertEquals(pixels[3 * w + 4], pixels[5 * w + 4])
+    assertTrue((pixels[4 * w + 3] and 0xff) in 1 until centre)
+    assertTrue("alpha stays opaque", pixels.all { (it ushr 24) == 0xff })
+  }
+
+  @Test
+  fun blurDoesNotBleedColourOutOfTransparentPixels() {
+    // A fully transparent green pixel next to opaque red must not tint the red green.
+    val pixels = intArrayOf(0x00ff00ff.toInt(), 0xffff0000.toInt(), 0xffff0000.toInt(), 0xffff0000.toInt())
+    Blur.blur(pixels, 4, 1, 1f)
+    for (p in pixels) {
+      if ((p ushr 24) == 0) continue
+      assertEquals(0, (p ushr 8) and 0xff)
+      assertEquals(0, p and 0xff)
+    }
+  }
+
+  @Test
+  fun zeroSigmaIsTheIdentity() {
+    val pixels = intArrayOf(1, 2, 3, 4)
+    Blur.blur(pixels, 2, 2, 0f)
+    assertArrayEquals(intArrayOf(1, 2, 3, 4), pixels)
   }
 }
 

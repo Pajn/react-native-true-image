@@ -17,7 +17,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) TrueImageFitMode fitMode;
 /// Fade duration in milliseconds.
 @property (nonatomic, assign) NSInteger transition;
+/// In source-image pixels.
 @property (nonatomic, assign) CGFloat blurRadius;
+/// How many pixels the blur radius spans after the pre-blur shrink.
+/// Defaults to TrueImageDefaultBlurPixelsPerRadius; 0 blurs at full size.
+@property (nonatomic, assign) CGFloat blurPixelsPerRadius;
 @property (nonatomic, strong, nullable) UIColor *tint;
 @property (nonatomic, copy, nullable) NSString *recyclingKey;
 

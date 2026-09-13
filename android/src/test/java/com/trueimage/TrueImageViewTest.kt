@@ -7,7 +7,9 @@ import java.time.Duration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -183,21 +185,76 @@ class TrueImageViewTest : GlideTestCase() {
   }
 
   @Test
-  fun blurStandInIsDroppedOnResizeAndRadiusChange() {
+  fun blurredImageIsBlurredOnceOffTheMainThreadAndNeverShownSharp() {
     prefetch(a)
     val h = harness()
     h.view.blurRadius = 10f
     h.view.layout(0, 0, 100, 100)
     h.set(a)
-    h.draw()
-    assertTrue(h.view.hasBlurStandIn)
+    assertFalse("the blur is still running; nothing shows yet", h.view.hasImage)
+    assertTrue(h.view.hasPendingLoad)
+    settle { h.view.hasImage }
+    assertNotNull(h.view.currentBlurred)
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+    // 8 px shrunk by 10 / 2 = 5 is 2 px.
+    assertEquals(2, (h.view.currentBlurred as BitmapDrawable).bitmap.width)
+    assertEquals(1, network.fetches[a])
+  }
+
+  @Test
+  fun blurredImageSurvivesResizeAndFollowsBlurChanges() {
+    prefetch(a)
+    val h = harness()
+    h.view.blurRadius = 10f
+    h.view.layout(0, 0, 100, 100)
+    h.set(a)
+    settle { h.view.hasImage }
+    val first = h.view.currentBlurred
     h.view.layout(0, 0, 200, 200)
-    assertFalse(h.view.hasBlurStandIn)
     h.draw()
-    assertTrue(h.view.hasBlurStandIn)
+    assertSame("the blur is independent of view size", first, h.view.currentBlurred)
     h.view.blurRadius = 20f
     h.view.commit()
-    assertFalse(h.view.hasBlurStandIn)
+    assertSame("the old blur stays up until the new one is ready", first, h.view.currentBlurred)
+    settle { h.view.currentBlurred !== first }
+    val second = h.view.currentBlurred
+    assertNotSame(first, second)
+    h.view.blurPixelsPerRadius = 4f
+    h.view.commit()
+    settle { h.view.currentBlurred !== second }
+    assertNotSame(second, h.view.currentBlurred)
+    h.view.blurRadius = 0f
+    h.view.commit()
+    assertNull("clearing the blur switches to the sharp image at once", h.view.currentBlurred)
+    assertTrue(h.view.hasImage)
+    assertEquals(1, network.fetches[a])
+  }
+
+  @Test
+  fun blurredImageIsSharedByRecycledViews() {
+    prefetch(a)
+    val first = harness()
+    first.view.blurRadius = 10f
+    first.set(a)
+    settle { first.view.hasImage }
+    val second = harness()
+    second.view.blurRadius = 10f
+    second.set(a)
+    assertTrue("a cached blur is a synchronous hit", second.view.hasImage)
+    assertNotNull(second.view.currentBlurred)
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), second.names)
+  }
+
+  @Test
+  fun newerSourceCancelsAPendingBlur() {
+    prefetch(a, b)
+    val h = harness()
+    h.view.blurRadius = 10f
+    h.set(a)
+    h.set(b)
+    settle { h.view.hasImage }
+    assertEquals(b, h.events.first { it.first == "topLoad" }.second["source"])
+    assertEquals(1, h.events.count { it.first == "topLoad" })
   }
 
   @Test
