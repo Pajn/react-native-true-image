@@ -117,10 +117,19 @@ yarn example android
 yarn example ios
 ```
 
-Android policy tests run with the example's Gradle wrapper:
+Android unit tests (pure policy plus Robolectric tests of the view and the
+prefetch contract against Glide) run with the example's Gradle wrapper:
 
 ```sh
 cd example/android && ./gradlew :react-native-true-image:testDebugUnitTest
+```
+
+iOS view and prefetch tests run as an XCTest bundle hosted by the example
+app, against SDWebImage with a fake network:
+
+```sh
+cd example/ios && xcodebuild test -workspace TrueImageExample.xcworkspace \
+  -scheme TrueImageExample -destination 'platform=iOS Simulator,name=iPhone 15 Pro'
 ```
 
 A Nix flake provides the Android toolchain: `nix develop` for the SDK and

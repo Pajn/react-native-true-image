@@ -21,6 +21,10 @@ typedef void (^TrueImageLoadCompletion)(UIImage *_Nullable image, BOOL fromMemor
 /// any URL failed.
 + (void)prefetchURLs:(NSArray<NSURL *> *)urls completion:(void (^)(BOOL ok))completion;
 
+/// Replaces the network layer (an `id<SDImageLoader>`) for tests. nil
+/// restores the default downloader. The shared image cache is kept.
++ (void)setImageLoaderForTesting:(nullable id)loader;
+
 @end
 
 NS_ASSUME_NONNULL_END

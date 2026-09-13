@@ -38,6 +38,16 @@
                ReferencedContainer = "container:TrueImageExample.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D7EF425136370225E69FF1FC"
+               BuildableName = "TrueImageTests.xctest"
+               BlueprintName = "TrueImageTests"
+               ReferencedContainer = "container:TrueImageExample.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

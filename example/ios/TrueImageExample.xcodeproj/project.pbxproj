@@ -9,12 +9,31 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-TrueImageExample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-TrueImageExample.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		177B9C350FEE1D8109BF0945 /* TrueImageFakeLoader.m in Sources */ = {isa = PBXBuildFile; fileRef = 06C4BF8183EF8C10BAE81294 /* TrueImageFakeLoader.m */; };
+		25C9188AB8E1EE5D257A41CC /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9EC28424DFD5C53C0C874E7B /* Foundation.framework */; };
+		37594353A9F70D1CE4572163 /* TrueImageTestCase.mm in Sources */ = {isa = PBXBuildFile; fileRef = B879D7545C3730815BF8FC8B /* TrueImageTestCase.mm */; };
+		6E9C5B2ECE6DC1DF682C09E1 /* TrueImageViewTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = CAAB7593B024D2A000FF0877 /* TrueImageViewTests.mm */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
+		79981729C5862A7516B2AF9E /* libPods-TrueImageTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 116BAA0836CA4947873D8401 /* libPods-TrueImageTests.a */; };
+		7C3302F90E66E00EE8C41EE3 /* TrueImagePrefetchParityTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = F690AED38BE8CFFC871FE289 /* TrueImagePrefetchParityTests.mm */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		A537BD24F272D2EEFD0238F5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		3A22787662403A5A04356721 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 13B07F861A680F5B00A75B9A;
+			remoteInfo = TrueImageExample;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		060D316E490DB83FBCC4AEC1 /* Pods-TrueImageTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TrueImageTests.release.xcconfig"; path = "Target Support Files/Pods-TrueImageTests/Pods-TrueImageTests.release.xcconfig"; sourceTree = "<group>"; };
+		06C4BF8183EF8C10BAE81294 /* TrueImageFakeLoader.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TrueImageFakeLoader.m; sourceTree = "<group>"; };
+		116BAA0836CA4947873D8401 /* libPods-TrueImageTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-TrueImageTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07F961A680F5B00A75B9A /* TrueImageExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrueImageExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = TrueImageExample/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = TrueImageExample/Info.plist; sourceTree = "<group>"; };
@@ -22,12 +41,27 @@
 		3B4392A12AC88292D35C810B /* Pods-TrueImageExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TrueImageExample.debug.xcconfig"; path = "Target Support Files/Pods-TrueImageExample/Pods-TrueImageExample.debug.xcconfig"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-TrueImageExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TrueImageExample.release.xcconfig"; path = "Target Support Files/Pods-TrueImageExample/Pods-TrueImageExample.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-TrueImageExample.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-TrueImageExample.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6F6D1A6A282698D2A0B1914F /* Pods-TrueImageTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TrueImageTests.debug.xcconfig"; path = "Target Support Files/Pods-TrueImageTests/Pods-TrueImageTests.debug.xcconfig"; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = TrueImageExample/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = TrueImageExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		9EC28424DFD5C53C0C874E7B /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS14.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		A41AEEA9AC9518BC0E6E1757 /* TrueImageTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrueImageTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B879D7545C3730815BF8FC8B /* TrueImageTestCase.mm */ = {isa = PBXFileReference; includeInIndex = 1; path = TrueImageTestCase.mm; sourceTree = "<group>"; };
+		CAAB7593B024D2A000FF0877 /* TrueImageViewTests.mm */ = {isa = PBXFileReference; includeInIndex = 1; path = TrueImageViewTests.mm; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		F690AED38BE8CFFC871FE289 /* TrueImagePrefetchParityTests.mm */ = {isa = PBXFileReference; includeInIndex = 1; path = TrueImagePrefetchParityTests.mm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		030E8E595740B5275118FC7C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				25C9188AB8E1EE5D257A41CC /* Foundation.framework in Frameworks */,
+				79981729C5862A7516B2AF9E /* libPods-TrueImageTests.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		13B07F8C1A680F5B00A75B9A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -56,8 +90,18 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				5DCACB8F33CDC322A6C60F78 /* libPods-TrueImageExample.a */,
+				3F653DDB5296B6FAA4453BFF /* iOS */,
+				116BAA0836CA4947873D8401 /* libPods-TrueImageTests.a */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		3F653DDB5296B6FAA4453BFF /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				9EC28424DFD5C53C0C874E7B /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -75,6 +119,7 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				96F154A624D2C10FEEC53B6E /* TrueImageTests */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -85,8 +130,21 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* TrueImageExample.app */,
+				A41AEEA9AC9518BC0E6E1757 /* TrueImageTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		96F154A624D2C10FEEC53B6E /* TrueImageTests */ = {
+			isa = PBXGroup;
+			children = (
+				06C4BF8183EF8C10BAE81294 /* TrueImageFakeLoader.m */,
+				F690AED38BE8CFFC871FE289 /* TrueImagePrefetchParityTests.mm */,
+				B879D7545C3730815BF8FC8B /* TrueImageTestCase.mm */,
+				CAAB7593B024D2A000FF0877 /* TrueImageViewTests.mm */,
+			);
+			name = TrueImageTests;
+			path = TrueImageTests;
 			sourceTree = "<group>";
 		};
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
@@ -94,6 +152,8 @@
 			children = (
 				3B4392A12AC88292D35C810B /* Pods-TrueImageExample.debug.xcconfig */,
 				5709B34CF0A7D63546082F79 /* Pods-TrueImageExample.release.xcconfig */,
+				060D316E490DB83FBCC4AEC1 /* Pods-TrueImageTests.release.xcconfig */,
+				6F6D1A6A282698D2A0B1914F /* Pods-TrueImageTests.debug.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -122,6 +182,25 @@
 			productReference = 13B07F961A680F5B00A75B9A /* TrueImageExample.app */;
 			productType = "com.apple.product-type.application";
 		};
+		D7EF425136370225E69FF1FC /* TrueImageTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 56F9B29F2056EEAB4EE1862B /* Build configuration list for PBXNativeTarget "TrueImageTests" */;
+			buildPhases = (
+				07FBC0DA328E656915786641 /* [CP] Check Pods Manifest.lock */,
+				244CA324F43111BE8E6AE25D /* Sources */,
+				030E8E595740B5275118FC7C /* Frameworks */,
+				38394B7B0B658489F84B7B54 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8E65B4E8BFD70640B9F5F224 /* PBXTargetDependency */,
+			);
+			name = TrueImageTests;
+			productName = TrueImageTests;
+			productReference = A41AEEA9AC9518BC0E6E1757 /* TrueImageTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -149,6 +228,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* TrueImageExample */,
+				D7EF425136370225E69FF1FC /* TrueImageTests */,
 			);
 		};
 /* End PBXProject section */
@@ -161,6 +241,13 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				A537BD24F272D2EEFD0238F5 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		38394B7B0B658489F84B7B54 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -198,6 +285,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-TrueImageExample/Pods-TrueImageExample-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		07FBC0DA328E656915786641 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-TrueImageTests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
 		C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */ = {
@@ -250,7 +359,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		244CA324F43111BE8E6AE25D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				177B9C350FEE1D8109BF0945 /* TrueImageFakeLoader.m in Sources */,
+				7C3302F90E66E00EE8C41EE3 /* TrueImagePrefetchParityTests.mm in Sources */,
+				37594353A9F70D1CE4572163 /* TrueImageTestCase.mm in Sources */,
+				6E9C5B2ECE6DC1DF682C09E1 /* TrueImageViewTests.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		8E65B4E8BFD70640B9F5F224 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = TrueImageExample;
+			target = 13B07F861A680F5B00A75B9A /* TrueImageExample */;
+			targetProxy = 3A22787662403A5A04356721 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -308,6 +437,49 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		3476A01EDF9F3485F7C7149D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6F6D1A6A282698D2A0B1914F /* Pods-TrueImageTests.debug.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../ios",
+					"$(SRCROOT)/../../ios/Policy/include",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				PRODUCT_BUNDLE_IDENTIFIER = trueimage.example.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TrueImageExample.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TrueImageExample";
+			};
+			name = Debug;
+		};
+		3E656C0739185E39686E4802 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 060D316E490DB83FBCC4AEC1 /* Pods-TrueImageTests.release.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../ios",
+					"$(SRCROOT)/../../ios/Policy/include",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				PRODUCT_BUNDLE_IDENTIFIER = trueimage.example.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TrueImageExample.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TrueImageExample";
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -477,6 +649,15 @@
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
 				13B07F951A680F5B00A75B9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		56F9B29F2056EEAB4EE1862B /* Build configuration list for PBXNativeTarget "TrueImageTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3E656C0739185E39686E4802 /* Release */,
+				3476A01EDF9F3485F7C7149D /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
