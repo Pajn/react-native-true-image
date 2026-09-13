@@ -119,10 +119,17 @@ exists, so the very first version is published from a maintainer's machine:
 
 1. `npm login`, then `yarn release` and follow the prompts. release-it
    publishes with your session.
-2. On npmjs.com, open the package's settings, add a trusted publisher of type
-   GitHub Actions with this repository, workflow file `release.yml` and
-   environment `npm`.
-3. `npm logout`. Every release from now on goes through the workflow.
+2. Register the workflow as a trusted publisher. The environment must match
+   the one the workflow job runs in:
+
+   ```sh
+   npm trust github --file release.yml --repo <owner>/react-native-true-image --env npm --allow-publish
+   ```
+
+   The same can be done on npmjs.com under the package's settings. Check the
+   result with `npm trust list react-native-true-image`.
+3. Create the `npm` environment in the GitHub repository's settings.
+4. `npm logout`. Every release from now on goes through the workflow.
 
 ### Scripts
 
