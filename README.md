@@ -197,16 +197,19 @@ Android unit tests (pure policy plus Robolectric tests of the view and the
 prefetch contract against Glide) run with the example's Gradle wrapper:
 
 ```sh
-cd example/android && ./gradlew :react-native-true-image:testDebugUnitTest
+yarn example test:android
 ```
 
 iOS view and prefetch tests run as an XCTest bundle hosted by the example
-app, against SDWebImage with a fake network:
+app, against SDWebImage with a fake network, on the first available iPhone
+simulator (the pods must be installed in `example/ios`):
 
 ```sh
-cd example/ios && xcodebuild test -workspace TrueImageExample.xcworkspace \
-  -scheme TrueImageExample -destination 'platform=iOS Simulator,name=iPhone 15 Pro'
+yarn example test:ios
 ```
+
+CI runs all of these, plus the example builds, on every push and pull
+request.
 
 A Nix flake provides the Android toolchain: `nix develop` for the SDK and
 JDK, `nix develop .#emulator` to include an emulator image.
