@@ -128,6 +128,11 @@ exists, so the very first version is published from a maintainer's machine:
 
    The same can be done on npmjs.com under the package's settings. Check the
    result with `npm trust list react-native-true-image`.
+
+   npm matches the token's claims exactly, so the owner and repository must
+   carry GitHub's casing (`Pajn`, not `pajn`). The same goes for
+   `repository.url` in `package.json`: provenance verification compares it
+   to the repository the token was issued for.
 3. Create the `npm` environment in the GitHub repository's settings.
 4. `npm logout`. Every release from now on goes through the workflow.
 

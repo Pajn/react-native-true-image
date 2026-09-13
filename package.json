@@ -57,14 +57,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pajn/react-native-true-image.git"
+    "url": "git+https://github.com/Pajn/react-native-true-image.git"
   },
-  "author": "Emma <817422+Pajn@users.noreply.github.com> (https://github.com/pajn)",
+  "author": "Emma <817422+Pajn@users.noreply.github.com> (https://github.com/Pajn)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/pajn/react-native-true-image/issues"
+    "url": "https://github.com/Pajn/react-native-true-image/issues"
   },
-  "homepage": "https://github.com/pajn/react-native-true-image#readme",
+  "homepage": "https://github.com/Pajn/react-native-true-image#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
