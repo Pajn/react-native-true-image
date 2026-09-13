@@ -1826,7 +1826,7 @@ PODS:
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
   - SDWebImage/Core (5.21.7)
-  - TrueImage (1.0.0):
+  - TrueImage (1.1.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2165,7 +2165,7 @@ SPEC CHECKSUMS:
   ReactCommon: 9002f006f571256348994183f7d4387aa7cf84e8
   ReactNativeDependencies: 2bd6854ade79bf1b60586d1ab7813a389df1b6bf
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
-  TrueImage: 7bafd64744e09b1d5d58996a47b44ed8868c05f2
+  TrueImage: cc9ce1b916f9b20493fd14f7c3b310e718b67c4b
   Yoga: 9891cfb1c680f64de9c41b09e7453dea33454d2b
 
 PODFILE CHECKSUM: 087897f6a65b08ad0f5962a87248317935e11bfd
