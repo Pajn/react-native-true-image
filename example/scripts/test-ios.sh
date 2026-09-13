@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs the iOS view and prefetch tests (an XCTest bundle hosted by the
-# example app) on the first available iPhone simulator of the newest
+# Runs the iOS view, prefetch and registration tests (an XCTest bundle
+# hosted by the example app) on the first available iPhone simulator of the newest
 # installed runtime. Requires Xcode with a simulator runtime and the pods
 # installed in example/ios.
 set -euo pipefail

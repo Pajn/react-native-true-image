@@ -183,8 +183,9 @@ jobs:
           bundle exec pod repo update --verbose
           bundle exec pod install --project-directory=ios
 
-      # Builds the example app and runs the view and prefetch tests, an
-      # XCTest bundle it hosts, on a simulator.
+      # Builds the example app and runs the XCTest bundle it hosts on a
+      # simulator: the view and prefetch tests, and a check that the codegen
+      # tables register the module and view under the names JS asks for.
       - name: Build example and run tests for iOS
         run: |
           yarn turbo run test:ios --cache-dir="${{ env.TURBO_CACHE_DIR }}"

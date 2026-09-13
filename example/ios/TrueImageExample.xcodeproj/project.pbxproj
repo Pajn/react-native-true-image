@@ -16,6 +16,7 @@
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		79981729C5862A7516B2AF9E /* libPods-TrueImageTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 116BAA0836CA4947873D8401 /* libPods-TrueImageTests.a */; };
 		7C3302F90E66E00EE8C41EE3 /* TrueImagePrefetchParityTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = F690AED38BE8CFFC871FE289 /* TrueImagePrefetchParityTests.mm */; };
+		3A1D5E7B9C2F4A6D8E0B1C3D /* TrueImageRegistrationTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = 5C7E9F1B3D5A7C9E1F3B5D7F /* TrueImageRegistrationTests.mm */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		A537BD24F272D2EEFD0238F5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -50,6 +51,7 @@
 		CAAB7593B024D2A000FF0877 /* TrueImageViewTests.mm */ = {isa = PBXFileReference; includeInIndex = 1; path = TrueImageViewTests.mm; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F690AED38BE8CFFC871FE289 /* TrueImagePrefetchParityTests.mm */ = {isa = PBXFileReference; includeInIndex = 1; path = TrueImagePrefetchParityTests.mm; sourceTree = "<group>"; };
+		5C7E9F1B3D5A7C9E1F3B5D7F /* TrueImageRegistrationTests.mm */ = {isa = PBXFileReference; includeInIndex = 1; path = TrueImageRegistrationTests.mm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -140,6 +142,7 @@
 			children = (
 				06C4BF8183EF8C10BAE81294 /* TrueImageFakeLoader.m */,
 				F690AED38BE8CFFC871FE289 /* TrueImagePrefetchParityTests.mm */,
+				5C7E9F1B3D5A7C9E1F3B5D7F /* TrueImageRegistrationTests.mm */,
 				B879D7545C3730815BF8FC8B /* TrueImageTestCase.mm */,
 				CAAB7593B024D2A000FF0877 /* TrueImageViewTests.mm */,
 			);
@@ -365,6 +368,7 @@
 			files = (
 				177B9C350FEE1D8109BF0945 /* TrueImageFakeLoader.m in Sources */,
 				7C3302F90E66E00EE8C41EE3 /* TrueImagePrefetchParityTests.mm in Sources */,
+				3A1D5E7B9C2F4A6D8E0B1C3D /* TrueImageRegistrationTests.mm in Sources */,
 				37594353A9F70D1CE4572163 /* TrueImageTestCase.mm in Sources */,
 				6E9C5B2ECE6DC1DF682C09E1 /* TrueImageViewTests.mm in Sources */,
 			);
