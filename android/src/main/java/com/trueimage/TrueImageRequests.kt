@@ -9,10 +9,23 @@ import com.bumptech.glide.RequestManager
 import com.bumptech.glide.integration.okhttp3.OkHttpUrlLoader
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.model.GlideUrl
+import com.bumptech.glide.load.model.Headers
+import com.bumptech.glide.load.model.LazyHeaders
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 import com.bumptech.glide.request.target.Target
 import com.facebook.react.modules.network.OkHttpClientProvider
 import java.io.InputStream
+
+/**
+ * A remote URL plus the headers sent with it. Identity is the URL alone, so
+ * the memory cache is keyed like the disk cache and like iOS: a prefetch and
+ * a view that agree on the URL share one entry whatever headers each sent.
+ */
+class TrueImageUrl(url: String, headers: Headers) : GlideUrl(url, headers) {
+  override fun equals(other: Any?): Boolean = other is GlideUrl && other.cacheKey == cacheKey
+
+  override fun hashCode(): Int = cacheKey.hashCode()
+}
 
 /**
  * The single place that knows how an image request is built, so that
@@ -46,10 +59,17 @@ object TrueImageRequests {
   }
 
   /** http(s) → GlideUrl, scheme-less → drawable id (null if unknown), anything else → Uri. */
-  fun model(context: Context, source: String): Any? = when (Source.kindOf(source)) {
-    SourceKind.REMOTE -> GlideUrl(source)
-    SourceKind.RESOURCE -> TrueImageResources.drawableId(context, source).takeIf { it != 0 }
-    SourceKind.URI -> Uri.parse(source)
+  fun model(context: Context, source: String, headers: Map<String, String>? = null): Any? =
+    when (Source.kindOf(source)) {
+      SourceKind.REMOTE -> remote(source, headers)
+      SourceKind.RESOURCE -> TrueImageResources.drawableId(context, source).takeIf { it != 0 }
+      SourceKind.URI -> Uri.parse(source)
+    }
+
+  private fun remote(url: String, headers: Map<String, String>?): GlideUrl {
+    val builder = LazyHeaders.Builder()
+    headers?.forEach { (name, value) -> builder.addHeader(name, value) }
+    return TrueImageUrl(url, builder.build())
   }
 
   /**

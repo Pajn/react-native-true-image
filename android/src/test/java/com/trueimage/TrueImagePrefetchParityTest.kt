@@ -53,8 +53,8 @@ class TrueImagePrefetchParityTest : GlideTestCase() {
   fun viewSizeKeyedRequestMissesThePrefetch() {
     prefetch(url)
     val glide = TrueImageRequests.glide(app)
-    val hit = loadSync(TrueImageRequests.drawable(glide, GlideUrl(url)).onlyRetrieveFromCache(true))
-    val miss = loadSync(glide.asDrawable().load(GlideUrl(url)).override(50, 50).onlyRetrieveFromCache(true))
+    val hit = loadSync(TrueImageRequests.drawable(glide, TrueImageRequests.model(app, url)!!).onlyRetrieveFromCache(true))
+    val miss = loadSync(glide.asDrawable().load(TrueImageRequests.model(app, url)).override(50, 50).onlyRetrieveFromCache(true))
     assertNotNull(hit)
     assertNull(miss)
   }
@@ -91,10 +91,57 @@ class TrueImagePrefetchParityTest : GlideTestCase() {
   }
 
   @Test
+  fun headersAreSentButKeptOutOfTheCacheKey() {
+    val headers = mapOf("Authorization" to "Bearer t", "X-Proxy" to "shelf")
+    assertTrue(prefetch(TrueImagePrefetcher.Request(url, headers)))
+    assertEquals(headers, network.headersSeen[url])
+
+    // A view that names the same URL without headers still gets the memory hit.
+    val (view, events) = view()
+    view.source = url
+    view.transitionMs = 300
+    view.commit()
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), events)
+    assertEquals(1, network.fetches[url])
+  }
+
+  @Test
+  fun viewSendsItsHeaders() {
+    val (view, events) = view()
+    view.source = url
+    view.headers = mapOf("Authorization" to "Bearer v")
+    view.commit()
+    settle { events.size >= 3 }
+    assertEquals(mapOf("Authorization" to "Bearer v"), network.headersSeen[url])
+  }
+
+  @Test
+  fun urlIdentityIgnoresHeaders() {
+    val plain = TrueImageRequests.model(app, url) as GlideUrl
+    val withHeaders = TrueImageRequests.model(app, url, mapOf("A" to "b")) as GlideUrl
+    assertEquals(plain, withHeaders)
+    assertEquals(plain.hashCode(), withHeaders.hashCode())
+    assertEquals(mapOf("A" to "b"), withHeaders.headers)
+  }
+
+  @Test
+  fun prefetchCompletesOffTheMainThread() {
+    var thread: Thread? = null
+    val result = java.util.concurrent.atomic.AtomicReference<Boolean?>(null)
+    TrueImagePrefetcher.prefetch(app, listOf(TrueImagePrefetcher.Request(url))) {
+      thread = Thread.currentThread()
+      result.set(it)
+    }
+    settle { result.get() != null }
+    assertTrue(result.get() == true)
+    assertTrue(thread !== android.os.Looper.getMainLooper().thread)
+  }
+
+  @Test
   fun prefetchedBitmapSurvivesIntoMemoryCacheAfterClear() {
     prefetch(url)
     val glide = TrueImageRequests.glide(app)
-    assertNotNull(loadSync(TrueImageRequests.drawable(glide, GlideUrl(url)).onlyRetrieveFromCache(true)))
+    assertNotNull(loadSync(TrueImageRequests.drawable(glide, TrueImageRequests.model(app, url)!!).onlyRetrieveFromCache(true)))
     assertEquals(1, network.fetches[url])
   }
 }

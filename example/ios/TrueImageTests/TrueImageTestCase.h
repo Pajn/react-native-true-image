@@ -28,7 +28,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)waitFor:(BOOL (^)(void))condition;
 - (void)spin:(NSTimeInterval)seconds;
 
-- (BOOL)prefetch:(NSArray<NSString *> *)sources;
+/// Elements are URL strings or `@{ @"uri": …, @"headers": @{…} }` dictionaries.
+- (BOOL)prefetch:(NSArray *)sources;
 - (TrueImageHarness *)harness;
 - (TrueImageHarness *)harnessWithFrame:(CGRect)frame;
 

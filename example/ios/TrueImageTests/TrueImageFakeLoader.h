@@ -10,6 +10,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSData *defaultData;
 @property (nonatomic, strong, readonly) NSMutableDictionary<NSString *, NSData *> *dataByURL;
 @property (nonatomic, strong, readonly) NSMutableDictionary<NSString *, NSNumber *> *fetches;
+/// Headers the last request for each URL carried, as applied by the request modifier.
+@property (nonatomic, strong, readonly) NSMutableDictionary<NSString *, NSDictionary<NSString *, NSString *> *> *headersSeen;
 @property (nonatomic, strong, readonly) NSMutableSet<NSString *> *failOnce;
 @property (nonatomic, strong, readonly) NSMutableSet<NSString *> *failAlways;
 /// URLs whose fetch is held until `release:` or `fail:`.

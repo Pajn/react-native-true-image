@@ -39,17 +39,36 @@ await Image.prefetch(covers.map((c) => c.url));
 | Input | What native receives | Path |
 | --- | --- | --- |
 | Remote URL | the string as-is | SDWebImage / Glide through OkHttp |
+| `{ uri, headers }` | the URI plus a header list | same, with the headers on the request |
 | `require()` asset | `Image.resolveAssetSource().uri` | file loader / drawable |
 | Scheme-less name, e.g. `"ic_play"` | the bare name | iOS asset catalog / Android drawable |
 
 Scheme-less names are drawn in the same frame and never fade, which makes
 them suitable for icons. `tintColor` applies to them only.
 
+Headers are sent with the request and are not part of the cache key: the
+same URL is one cached image whatever headers fetched it, so a prefetch
+with headers and a view without them still share one entry. Pass the same
+`{ uri, headers }` object to both when the server needs them.
+
+### Borders and rounded corners
+
+The view takes every `borderRadius`, `borderWidth`, `borderColor` and
+`borderStyle` prop a `View` takes, on both platforms, and clips the image
+to the border box. There is no need for a clipping wrapper.
+
+```tsx
+<Image source={url} style={{ width: 96, height: 96, borderRadius: 12 }} />
+```
+
+Clipping relies on the default `overflow: 'hidden'`; overriding it to
+`visible` on iOS draws the image square.
+
 ### Props
 
 | Prop | Default | Notes |
 | --- | --- | --- |
-| `source` | | `string`, `require()` id, or `null` to clear |
+| `source` | | `string`, `{ uri, headers }`, `require()` id, or `null` to clear |
 | `resizeMode` | `'cover'` | `cover`, `contain`, `stretch`, `center` |
 | `transition` | 300 ms for URLs, 0 for assets | Fade duration in milliseconds |
 | `blurRadius` | 0 | In source-image pixels, so the same value looks the same on both platforms |
@@ -70,11 +89,16 @@ image always crossfades. An image whose fade is interrupted never reports
 
 ### Prefetch
 
-`Image.prefetch(url | url[])` resolves `true` only if every URL loaded. Both
-the prefetch and the view build the identical request, so a view that mounts
-after a prefetch gets the image synchronously from memory. This is the
-module's central contract; anything that adds view size to the request key
-breaks it.
+`Image.prefetch(source | source[])` takes URL strings or `{ uri, headers }`
+objects and resolves `true` only if every one loaded. Both the prefetch and
+the view build the identical request, so a view that mounts after a prefetch
+gets the image synchronously from memory. This is the module's central
+contract; anything that adds view size to the request key breaks it.
+
+On Android the prefetch loop runs on a background thread: each load is
+started with `submit()` and awaited there, and the main looper sees a single
+post per batch. Prefetches usually race the mount work they feed, so they
+stay out of its queue.
 
 ## Android: parallel decoding of disk-cached images
 
@@ -83,6 +107,13 @@ downloads decode on a pool of up to four threads, but a `DecodeJob` for an
 image already on disk runs on the disk cache executor, which has one thread.
 A cold scroll through a list whose images are on disk decodes them one at a
 time.
+
+Measure before opting in. On one launch profile with twenty prefetched
+covers, decode was under a third of the batch's wall time and adding threads
+changed time-to-paint by under one percent; the rest was main-thread
+scheduling, which the background prefetch loop now avoids. The helper helps
+a cold scroll of disk-cached images that were not prefetched, and little
+else.
 
 Executors can only be configured through the app's `AppGlideModule`, so this
 package cannot change it on its own. To opt in, add the Glide annotation
@@ -103,9 +134,7 @@ class AppGlide : AppGlideModule() {
 ```
 
 `apply` sizes the disk cache executor like Glide's source executor,
-`min(4, CPU cores)`. Pass a `threadCount` to choose differently. Prefetched
-images are not affected either way, since their decode already happened off
-the critical path.
+`min(4, CPU cores)`. Pass a `threadCount` to choose differently.
 
 ## Development
 

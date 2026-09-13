@@ -178,6 +178,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
 {
   [self clear];
   _source = nil;
+  _headers = nil;
   _recyclingKey = nil;
   _appliedRecyclingKey = nil;
   _transition = 0;
@@ -210,6 +211,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   __weak __typeof(self) weakSelf = self;
   id token = [TrueImageLoader loadURL:url
                            blurRadius:request.blurRadius
+                              headers:_headers
                            completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
                              __typeof(self) self = weakSelf;
                              // A load superseded by a newer source is silent: no onError, no image.

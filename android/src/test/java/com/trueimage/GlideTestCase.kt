@@ -26,6 +26,7 @@ import java.io.InputStream
 import java.nio.ByteBuffer
 import java.util.zip.CRC32
 import java.util.zip.Deflater
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
 import org.junit.Before
 import org.robolectric.RuntimeEnvironment
@@ -101,15 +102,27 @@ abstract class GlideTestCase {
     return result
   }
 
-  fun prefetch(vararg sources: String): Boolean {
-    var result: Boolean? = null
-    TrueImagePrefetcher.prefetch(app, sources.toList()) { result = it }
-    settle { result != null }
-    return result ?: error("prefetch did not complete")
+  /** Accepts URL strings and [TrueImagePrefetcher.Request]s. */
+  fun prefetch(vararg sources: Any): Boolean {
+    val requests = sources.map {
+      when (it) {
+        is String -> TrueImagePrefetcher.Request(it)
+        is TrueImagePrefetcher.Request -> it
+        else -> error("unsupported prefetch source $it")
+      }
+    }
+    val result = AtomicReference<Boolean?>(null)
+    TrueImagePrefetcher.prefetch(app, requests) { result.set(it) }
+    settle { result.get() != null }
+    // Let the batch's single main-thread post (the target clears) run.
+    settle()
+    return result.get() ?: error("prefetch did not complete")
   }
 
   class FakeNetwork {
-    val fetches = mutableMapOf<String, Int>()
+    val fetches = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    /** Headers Glide carried on the last request per URL. */
+    val headersSeen = mutableMapOf<String, Map<String, String>>()
     val failOnce = mutableSetOf<String>()
     val failAlways = mutableSetOf<String>()
     /** URLs whose fetch is held until [release]. */
@@ -127,8 +140,10 @@ abstract class GlideTestCase {
     }
 
     inner class Loader : ModelLoader<GlideUrl, InputStream> {
-      override fun buildLoadData(model: GlideUrl, width: Int, height: Int, options: Options) =
-        ModelLoader.LoadData(ObjectKey(model.toStringUrl()), Fetcher(model.toStringUrl()))
+      override fun buildLoadData(model: GlideUrl, width: Int, height: Int, options: Options): ModelLoader.LoadData<InputStream> {
+        headersSeen[model.toStringUrl()] = model.headers
+        return ModelLoader.LoadData(ObjectKey(model.toStringUrl()), Fetcher(model.toStringUrl()))
+      }
 
       override fun handles(model: GlideUrl) = true
     }

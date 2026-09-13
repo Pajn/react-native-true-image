@@ -20,12 +20,19 @@ type ErrorEvent = Readonly<{
   source: string;
 }>;
 
+type Header = Readonly<{
+  name: string;
+  value: string;
+}>;
+
 export interface NativeProps extends ViewProps {
   /**
    * Remote URL, `file://` URI, or a scheme-less native resource name
    * (asset catalog image on iOS, drawable on Android).
    */
   source?: string;
+  /** Request headers for remote sources. Not part of the cache key. */
+  headers?: ReadonlyArray<Header>;
   resizeMode?: CodegenTypes.WithDefault<
     'cover' | 'contain' | 'stretch' | 'center',
     'cover'

@@ -12,6 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Props
 
 @property (nonatomic, copy, nullable) NSString *source;
+/// Sent with remote requests. Not part of the cache key.
+@property (nonatomic, copy, nullable) NSDictionary<NSString *, NSString *> *headers;
 @property (nonatomic, assign) TrueImageFitMode fitMode;
 /// Fade duration in milliseconds.
 @property (nonatomic, assign) NSInteger transition;

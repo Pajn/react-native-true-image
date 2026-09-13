@@ -4,11 +4,11 @@ import { Image as RNImage } from 'react-native';
 import { Image, resolveSource, resolveTransition } from '../Image.native';
 import { DEFAULT_TRANSITION } from '../types';
 
-const mockPrefetch = jest.fn<(urls: string[]) => Promise<boolean>>();
+const mockPrefetch = jest.fn<(requests: unknown[]) => Promise<boolean>>();
 
 jest.mock('../specs/NativeTrueImage', () => ({
   __esModule: true,
-  default: { prefetch: (urls: string[]) => mockPrefetch(urls) },
+  default: { prefetch: (requests: unknown[]) => mockPrefetch(requests) },
 }));
 
 jest.mock('../specs/TrueImageViewNativeComponent', () => {
@@ -34,7 +34,8 @@ describe('source resolution', () => {
   it('passes null through as undefined', async () => {
     await render(<Image source={null} />);
     expect(nativeProps().source).toBeUndefined();
-    expect(resolveSource(undefined)).toBeUndefined();
+    expect(nativeProps().headers).toBeUndefined();
+    expect(resolveSource(undefined).uri).toBeUndefined();
   });
 
   it('passes a URL string through unchanged', async () => {
@@ -54,7 +55,28 @@ describe('source resolution', () => {
   });
 
   it('resolves an unknown asset id to undefined without throwing', async () => {
-    expect(resolveSource(999_999)).toBeUndefined();
+    expect(resolveSource(999_999).uri).toBeUndefined();
+  });
+
+  it('splits a { uri, headers } source into uri and a header list', async () => {
+    await render(
+      <Image
+        source={{
+          uri: 'https://x/a.jpg',
+          headers: { 'Authorization': 'Bearer t', 'X-Proxy': 'shelf' },
+        }}
+      />
+    );
+    expect(nativeProps().source).toBe('https://x/a.jpg');
+    expect(nativeProps().headers).toEqual([
+      { name: 'Authorization', value: 'Bearer t' },
+      { name: 'X-Proxy', value: 'shelf' },
+    ]);
+  });
+
+  it('sends no header list for a uri object without headers', async () => {
+    await render(<Image source={{ uri: 'https://x/a.jpg', headers: {} }} />);
+    expect(nativeProps().headers).toBeUndefined();
   });
 
   it('passes scheme-less resource names through as-is', async () => {
@@ -71,6 +93,12 @@ describe('transition defaults', () => {
 
   it('defaults bundled assets to 0', async () => {
     expect(resolveTransition(42, undefined)).toBe(0);
+  });
+
+  it('treats a uri object like a URL string', async () => {
+    expect(resolveTransition({ uri: 'https://x/a.jpg' }, undefined)).toBe(
+      DEFAULT_TRANSITION
+    );
   });
 
   it('does not overwrite an explicit transition of 0 on a URL', async () => {
@@ -178,16 +206,31 @@ describe('props', () => {
 });
 
 describe('prefetch', () => {
-  it('wraps a single URL in an array', async () => {
+  it('wraps a single URL in a request list', async () => {
     await expect(Image.prefetch('https://x/a.jpg')).resolves.toBe(true);
-    expect(mockPrefetch).toHaveBeenCalledWith(['https://x/a.jpg']);
+    expect(mockPrefetch).toHaveBeenCalledWith([{ uri: 'https://x/a.jpg' }]);
   });
 
-  it('passes an array through as a fresh array', async () => {
-    const urls = ['https://x/a.jpg', 'https://x/b.jpg'];
-    await Image.prefetch(urls);
-    expect(mockPrefetch).toHaveBeenCalledWith(urls);
-    expect(mockPrefetch.mock.calls[0]?.[0]).not.toBe(urls);
+  it('maps an array of URLs to requests', async () => {
+    await Image.prefetch(['https://x/a.jpg', 'https://x/b.jpg']);
+    expect(mockPrefetch).toHaveBeenCalledWith([
+      { uri: 'https://x/a.jpg' },
+      { uri: 'https://x/b.jpg' },
+    ]);
+  });
+
+  it('carries headers into the request, using the same shape as the view', async () => {
+    await Image.prefetch([
+      { uri: 'https://x/a.jpg', headers: { Authorization: 'Bearer t' } },
+      { uri: 'https://x/b.jpg' },
+    ]);
+    expect(mockPrefetch).toHaveBeenCalledWith([
+      {
+        uri: 'https://x/a.jpg',
+        headers: [{ name: 'Authorization', value: 'Bearer t' }],
+      },
+      { uri: 'https://x/b.jpg', headers: undefined },
+    ]);
   });
 
   it('propagates a false result', async () => {

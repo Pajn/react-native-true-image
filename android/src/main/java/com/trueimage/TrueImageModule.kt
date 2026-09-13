@@ -6,11 +6,20 @@ import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableType
 
 class TrueImageModule(reactContext: ReactApplicationContext) : NativeTrueImageSpec(reactContext) {
-  override fun prefetch(urls: ReadableArray, promise: Promise) {
-    val sources = (0 until urls.size()).mapNotNull { index ->
-      if (urls.getType(index) == ReadableType.String) urls.getString(index) else null
+  override fun prefetch(requests: ReadableArray, promise: Promise) {
+    var allValid = true
+    val parsed = ArrayList<TrueImagePrefetcher.Request>(requests.size())
+    for (i in 0 until requests.size()) {
+      val map = if (requests.getType(i) == ReadableType.Map) requests.getMap(i) else null
+      val uri = map?.getString("uri")
+      if (uri == null) {
+        allValid = false
+        continue
+      }
+      val headers = if (map.hasKey("headers")) TrueImageHeaders.fromArray(map.getArray("headers")) else null
+      parsed += TrueImagePrefetcher.Request(uri, headers)
     }
-    TrueImagePrefetcher.prefetch(reactApplicationContext, sources) { ok -> promise.resolve(ok) }
+    TrueImagePrefetcher.prefetch(reactApplicationContext, parsed) { ok -> promise.resolve(ok && allValid) }
   }
 
   companion object {

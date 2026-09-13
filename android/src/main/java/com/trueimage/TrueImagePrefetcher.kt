@@ -4,52 +4,54 @@ import android.content.Context
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
-import com.bumptech.glide.request.target.CustomTarget
-import com.bumptech.glide.request.target.Target
-import com.bumptech.glide.request.transition.Transition
+import com.bumptech.glide.request.FutureTarget
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 object TrueImagePrefetcher {
+  data class Request(val source: String, val headers: Map<String, String>? = null)
+
+  /**
+   * Prefetch batches usually race the mount work they are meant to feed, so
+   * the loop stays off the main thread: `submit()` starts each load from
+   * here, `get()` waits here, and the main looper sees one post per batch.
+   */
+  private val executor: ExecutorService = Executors.newCachedThreadPool { runnable ->
+    Thread(runnable, "true-image-prefetch").apply { isDaemon = true }
+  }
+
   /**
    * Loads every source with the exact request the view uses. Resolves false
-   * if any of them failed. Runs on the main looper because Glide requires it;
-   * the callback fires there too.
+   * if any of them failed. The callback runs on a background thread.
    */
-  fun prefetch(context: Context, sources: List<String>, done: (Boolean) -> Unit) {
-    if (sources.isEmpty()) {
+  fun prefetch(context: Context, requests: List<Request>, done: (Boolean) -> Unit) {
+    if (requests.isEmpty()) {
       done(true)
       return
     }
-    val main = Handler(Looper.getMainLooper())
-    main.post {
+    executor.execute {
       val glide = TrueImageRequests.glide(context)
-      var remaining = sources.size
       var ok = true
-
-      fun finish(success: Boolean, target: Target<Drawable>?) {
-        if (!success) ok = false
-        // Clearing the target is what moves the bitmap from Glide's active
-        // set into the memory cache. Post it so it never runs inside the
-        // callback that delivered it.
-        if (target != null) main.post { glide.clear(target) }
-        if (--remaining == 0) done(ok)
-      }
-
-      for (source in sources) {
-        val model = TrueImageRequests.model(context, source)
+      val futures = ArrayList<FutureTarget<Drawable>>(requests.size)
+      for (request in requests) {
+        val model = TrueImageRequests.model(context, request.source, request.headers)
         if (model == null) {
-          finish(false, null)
+          ok = false
           continue
         }
-        val target = object : CustomTarget<Drawable>() {
-          override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) =
-            finish(true, this)
-
-          override fun onLoadFailed(errorDrawable: Drawable?) = finish(false, this)
-
-          override fun onLoadCleared(placeholder: Drawable?) = Unit
-        }
-        TrueImageRequests.drawable(glide, model).into(target)
+        futures += TrueImageRequests.drawable(glide, model).submit()
       }
+      for (future in futures) {
+        try {
+          future.get()
+        } catch (e: Exception) {
+          ok = false
+        }
+      }
+      // Clearing the targets is what moves the bitmaps from Glide's active
+      // set into the memory cache. One main-thread item for the whole batch.
+      Handler(Looper.getMainLooper()).post { for (future in futures) glide.clear(future) }
+      done(ok)
     }
   }
 }

@@ -20,6 +20,7 @@
   if (self = [super init]) {
     _dataByURL = [NSMutableDictionary new];
     _fetches = [NSMutableDictionary new];
+    _headersSeen = [NSMutableDictionary new];
     _failOnce = [NSMutableSet new];
     _failAlways = [NSMutableSet new];
     _hang = [NSMutableSet new];
@@ -81,6 +82,12 @@
 {
   NSString *key = url.absoluteString;
   _fetches[key] = @([self fetchCount:key] + 1);
+  id<SDWebImageDownloaderRequestModifier> modifier = context[SDWebImageContextDownloadRequestModifier];
+  NSURLRequest *request = [NSURLRequest requestWithURL:url];
+  if (modifier) {
+    request = [modifier modifiedRequestWithRequest:request] ?: request;
+  }
+  _headersSeen[key] = request.allHTTPHeaderFields ?: @{};
   TrueImageFakeOperation *operation = [TrueImageFakeOperation new];
 
   BOOL fails = [_failAlways containsObject:key] || [_failOnce containsObject:key];

@@ -36,6 +36,8 @@ class TrueImageView(context: Context) : View(context) {
   // MARK: Props
 
   var source: String? = null
+  /** Sent with remote requests. Not part of the cache key. */
+  var headers: Map<String, String>? = null
   var fitMode: FitMode = FitMode.COVER
   /** Fade duration in milliseconds. */
   var transitionMs: Int = 0
@@ -164,7 +166,7 @@ class TrueImageView(context: Context) : View(context) {
       return
     }
 
-    val model = TrueImageRequests.model(context, request.source)
+    val model = TrueImageRequests.model(context, request.source, headers)
     if (model == null) {
       clear()
       emitError("No drawable named \"${request.source}\"", request.source)

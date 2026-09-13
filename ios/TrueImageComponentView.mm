@@ -92,6 +92,15 @@ static TrueImageFitMode TrueImageFitModeFromProp(TrueImageViewResizeMode mode)
   const auto &newProps = *std::static_pointer_cast<TrueImageViewProps const>(props);
 
   _view.source = newProps.source.empty() ? nil : RCTNSStringFromString(newProps.source);
+  if (newProps.headers.empty()) {
+    _view.headers = nil;
+  } else {
+    NSMutableDictionary<NSString *, NSString *> *headers = [NSMutableDictionary dictionaryWithCapacity:newProps.headers.size()];
+    for (const auto &header : newProps.headers) {
+      headers[RCTNSStringFromString(header.name)] = RCTNSStringFromString(header.value);
+    }
+    _view.headers = headers;
+  }
   _view.fitMode = TrueImageFitModeFromProp(newProps.resizeMode);
   _view.transition = newProps.transition;
   _view.blurRadius = newProps.blurRadius;

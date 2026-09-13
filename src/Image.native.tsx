@@ -8,22 +8,45 @@ import {
   type ImageLoadEvent,
   type ImageProps,
   type ImageSource,
+  type PrefetchSource,
 } from './types';
 
 export type ImageRef = HostInstance;
 
+type NativeHeader = { name: string; value: string };
+
+export interface ResolvedSource {
+  uri: string | undefined;
+  headers: NativeHeader[] | undefined;
+}
+
 /**
- * Collapses every accepted `source` into the single string the native side
- * understands. Remote and `file://` URLs pass through unchanged; a `require()`
- * asset id becomes whatever the packager resolves it to (a `file://` or
- * `http://` URI in development, a bundled resource name in release builds).
- * Unknown asset ids resolve to `undefined` rather than throwing.
+ * Collapses every accepted `source` into the string the native side
+ * understands plus optional headers. Remote and `file://` URLs pass through
+ * unchanged; a `require()` asset id becomes whatever the packager resolves it
+ * to (a `file://` or `http://` URI in development, a bundled resource name in
+ * release builds). Unknown asset ids resolve to `undefined` rather than
+ * throwing.
  */
-export function resolveSource(source: ImageSource): string | undefined {
-  if (source == null) return undefined;
-  if (typeof source === 'string') return source;
-  const resolved = RNImage.resolveAssetSource(source);
-  return resolved?.uri ?? undefined;
+export function resolveSource(source: ImageSource): ResolvedSource {
+  if (source == null) return { uri: undefined, headers: undefined };
+  if (typeof source === 'string') return { uri: source, headers: undefined };
+  if (typeof source === 'number') {
+    const resolved = RNImage.resolveAssetSource(source);
+    return { uri: resolved?.uri ?? undefined, headers: undefined };
+  }
+  return { uri: source.uri, headers: toNativeHeaders(source.headers) };
+}
+
+function toNativeHeaders(
+  headers: Record<string, string> | undefined
+): NativeHeader[] | undefined {
+  if (headers === undefined) return undefined;
+  const list = Object.entries(headers).map(([name, value]) => ({
+    name,
+    value,
+  }));
+  return list.length > 0 ? list : undefined;
 }
 
 /**
@@ -58,6 +81,7 @@ function ImageComponent({
   ...rest
 }: ImageProps & { ref?: Ref<ImageRef> }) {
   const latest = useLatest({ onLoad, onError, onDisplay, onDisplayEnd });
+  const resolved = resolveSource(source);
 
   // Native only gets a handler when the caller supplied one, so the
   // native side can skip emitting events nobody listens to. The wrappers
@@ -89,7 +113,8 @@ function ImageComponent({
     <TrueImageView
       {...rest}
       ref={ref}
-      source={resolveSource(source)}
+      source={resolved.uri}
+      headers={resolved.headers}
       transition={resolveTransition(source, transition)}
       resizeMode={resizeMode}
       blurRadius={blurRadius}
@@ -104,9 +129,19 @@ function ImageComponent({
  * make, so the view's load is a synchronous memory hit. Resolves `false`
  * if any URL failed.
  */
-function prefetch(urls: string | readonly string[]): Promise<boolean> {
-  const list = typeof urls === 'string' ? [urls] : [...urls];
-  return NativeTrueImage.prefetch(list);
+function prefetch(
+  sources: PrefetchSource | readonly PrefetchSource[]
+): Promise<boolean> {
+  const list = Array.isArray(sources)
+    ? (sources as readonly PrefetchSource[])
+    : [sources as PrefetchSource];
+  return NativeTrueImage.prefetch(
+    list.map((item) =>
+      typeof item === 'string'
+        ? { uri: item }
+        : { uri: item.uri, headers: toNativeHeaders(item.headers) }
+    )
+  );
 }
 
 export const Image = Object.assign(ImageComponent, { prefetch });

@@ -90,6 +90,30 @@
   XCTAssertEqual([self.network fetchCount:_url], 1u, @"the valid URL is still prefetched");
 }
 
+- (void)testHeadersAreSentButKeptOutOfTheCacheKey
+{
+  NSDictionary *headers = @{@"Authorization" : @"Bearer t", @"X-Proxy" : @"shelf"};
+  XCTAssertTrue(([self prefetch:@[ @{@"uri" : _url, @"headers" : headers} ]]));
+  XCTAssertEqualObjects(self.network.headersSeen[_url], headers);
+
+  // A view that names the same URL without headers still gets the memory hit.
+  TrueImageHarness *h = [self harness];
+  [h setSource:_url transition:300 recyclingKey:nil];
+  XCTAssertEqualObjects(h.events, (@[ @"load", @"display", @"displayEnd" ]));
+  XCTAssertEqual([self.network fetchCount:_url], 1u);
+}
+
+- (void)testViewSendsItsHeaders
+{
+  TrueImageHarness *h = [self harness];
+  h.view.headers = @{@"Authorization" : @"Bearer v"};
+  [h setSource:_url transition:0 recyclingKey:nil];
+  XCTAssertTrue([self waitFor:^{
+    return h.events.count >= 3;
+  }]);
+  XCTAssertEqualObjects(self.network.headersSeen[_url], @{@"Authorization" : @"Bearer v"});
+}
+
 - (void)testWebPDecodes
 {
   // A 1x1 lossless WebP.

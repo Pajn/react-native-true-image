@@ -128,11 +128,24 @@
 }
 
 /// Goes through the module so URL parsing is exercised too.
-- (BOOL)prefetch:(NSArray<NSString *> *)sources
+- (BOOL)prefetch:(NSArray *)sources
 {
+  NSMutableArray *requests = [NSMutableArray arrayWithCapacity:sources.count];
+  for (id source in sources) {
+    if ([source isKindOfClass:NSString.class]) {
+      [requests addObject:@{@"uri" : source}];
+      continue;
+    }
+    NSDictionary *dictionary = source;
+    NSMutableArray *headers = [NSMutableArray new];
+    [dictionary[@"headers"] enumerateKeysAndObjectsUsingBlock:^(NSString *name, NSString *value, BOOL *stop) {
+      [headers addObject:@{@"name" : name, @"value" : value}];
+    }];
+    [requests addObject:@{@"uri" : dictionary[@"uri"], @"headers" : headers}];
+  }
   __block NSNumber *result;
   TrueImageModule *module = [TrueImageModule new];
-  [module prefetch:sources
+  [module prefetch:requests
            resolve:^(id value) {
              result = value;
            }

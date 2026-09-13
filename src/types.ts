@@ -1,11 +1,21 @@
 import type { ColorValue, ViewProps } from 'react-native';
 
+/** A remote source with request headers, for servers behind a proxy or auth. */
+export interface ImageURISource {
+  uri: string;
+  /** Sent with the request. Not part of the cache key. */
+  headers?: Record<string, string>;
+}
+
 /**
  * A remote URL, a `file://` URI, a scheme-less native resource name
- * (asset catalog image on iOS, drawable on Android), or a `require()`d
- * asset. `null` and `undefined` clear the view.
+ * (asset catalog image on iOS, drawable on Android), a `require()`d
+ * asset, or a `{ uri, headers }` object. `null` and `undefined` clear the view.
  */
-export type ImageSource = string | number | null | undefined;
+export type ImageSource = string | number | ImageURISource | null | undefined;
+
+/** What `Image.prefetch` accepts: the same shapes as `source`, minus assets. */
+export type PrefetchSource = string | ImageURISource;
 
 export type ResizeMode = 'cover' | 'contain' | 'stretch' | 'center';
 
