@@ -1,5 +1,4 @@
-
-  internal val previousAlpha: Int? get() = previous?.display?.alphapackage com.trueimage
+package com.trueimage
 
 import android.content.Context
 import android.graphics.Canvas
@@ -95,6 +94,7 @@ class TrueImageView(context: Context) : View(context) {
   internal val currentDrawable: Drawable? get() = current?.drawable
   internal val currentBlurred: Drawable? get() = current?.blurred
   internal val isShowingPlaceholder: Boolean get() = current?.isPlaceholder == true
+  internal val previousAlpha: Int? get() = previous?.display?.alpha
   internal val fadeAlpha: Float? get() = crossfade?.alpha(now())
 
   init {
