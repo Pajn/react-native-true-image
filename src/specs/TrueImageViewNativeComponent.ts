@@ -48,6 +48,13 @@ export interface NativeProps extends ViewProps {
   blurPixelsPerRadius?: CodegenTypes.WithDefault<CodegenTypes.Float, 2>;
   tintColor?: ColorValue;
   recyclingKey?: string;
+  /** Shown into an empty view until `source` loads. Same forms as `source`. */
+  placeholder?: string;
+  placeholderHeaders?: ReadonlyArray<Header>;
+  /** Crossfade from the placeholder to the image, in milliseconds. */
+  placeholderTransition?: CodegenTypes.WithDefault<CodegenTypes.Int32, 0>;
+  /** Whether a remote placeholder may be fetched rather than only read from cache. */
+  placeholderFromNetwork?: CodegenTypes.WithDefault<boolean, false>;
 
   onLoad?: CodegenTypes.DirectEventHandler<LoadEvent>;
   onError?: CodegenTypes.DirectEventHandler<ErrorEvent>;

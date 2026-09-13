@@ -24,6 +24,15 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat blurPixelsPerRadius;
 @property (nonatomic, strong, nullable) UIColor *tint;
 @property (nonatomic, copy, nullable) NSString *recyclingKey;
+/// Shown into an empty view until `source` loads; the same shapes as
+/// `source`. Never fades in and reports no events.
+@property (nonatomic, copy, nullable) NSString *placeholder;
+@property (nonatomic, copy, nullable) NSDictionary<NSString *, NSString *> *placeholderHeaders;
+/// Crossfade from the placeholder to the image, in milliseconds. 0 cuts.
+@property (nonatomic, assign) NSInteger placeholderTransition;
+/// Whether a remote placeholder may be fetched. Off, it shows only when
+/// already cached.
+@property (nonatomic, assign) BOOL placeholderFromNetwork;
 
 #pragma mark - Events
 

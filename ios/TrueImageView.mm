@@ -52,6 +52,13 @@ enum class TrueImageKind { None, Bitmap, Resource };
   TrueImageRequest _pendingRequest;
   id _pendingToken;
 
+  id _placeholderToken;
+  /// The layer shows the placeholder; `_loadedKind` stays None.
+  BOOL _placeholderShown;
+  TrueImageRequest _placeholderRequest;
+  UIImage *_placeholderImage;
+  BOOL _placeholderIsResource;
+
   /// Bumped whenever an in-flight load is abandoned; stale completions compare against it.
   NSUInteger _generation;
   /// Identifies the fade that is allowed to report onDisplayEnd.
@@ -65,6 +72,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   NSString *_appliedRecyclingKey;
   TrueImageFitMode _appliedFitMode;
   UIColor *_appliedTint;
+  NSString *_appliedPlaceholder;
 }
 
 #pragma mark - Lifecycle
@@ -98,6 +106,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
 - (void)dealloc
 {
   [TrueImageLoader cancel:_pendingToken];
+  [TrueImageLoader cancel:_placeholderToken];
 }
 
 - (void)layoutSubviews
@@ -107,6 +116,9 @@ enum class TrueImageKind { None, Bitmap, Resource };
   _imageLayer.contentsScale = [self displayScale];
   switch (_loadedKind) {
     case TrueImageKind::None:
+      if (_placeholderShown && _placeholderIsResource) {
+        [self showPlaceholder:_placeholderImage request:_placeholderRequest isResource:YES];
+      }
       break;
     case TrueImageKind::Resource:
       if (!CGSizeEqualToSize(self.bounds.size, _rasterSize)) {
@@ -164,6 +176,8 @@ enum class TrueImageKind { None, Bitmap, Resource };
       [self rasterize:_loadedImage request:_loadedRequest];
     }
   }
+  BOOL placeholderChanged = _placeholder != _appliedPlaceholder && ![_placeholder isEqualToString:_appliedPlaceholder];
+  _appliedPlaceholder = [_placeholder copy];
 
   if (_source.length == 0) {
     [self clear];
@@ -176,6 +190,9 @@ enum class TrueImageKind { None, Bitmap, Resource };
     return;
   }
   if (_hasPending && _pendingRequest == request) {
+    if (placeholderChanged) {
+      [self loadPlaceholder];
+    }
     return;
   }
   [self load:request];
@@ -195,6 +212,11 @@ enum class TrueImageKind { None, Bitmap, Resource };
   _appliedTint = nil;
   _fitMode = TrueImageFitModeCover;
   _appliedFitMode = TrueImageFitModeCover;
+  _placeholder = nil;
+  _placeholderHeaders = nil;
+  _appliedPlaceholder = nil;
+  _placeholderTransition = 0;
+  _placeholderFromNetwork = NO;
   _onLoad = nil;
   _onError = nil;
   _onDisplay = nil;
@@ -221,6 +243,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
                            blurRadius:request.blurRadius
                         blurDownscale:request.blurDownscale
                               headers:_headers
+                            cacheOnly:NO
                            completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
                              __typeof(self) self = weakSelf;
                              // A load superseded by a newer source is silent: no onError, no image.
@@ -241,7 +264,101 @@ enum class TrueImageKind { None, Bitmap, Resource };
     _hasPending = YES;
     _pendingRequest = request;
     _pendingToken = token;
+    // Only an empty view gets a placeholder; a displayed image stays up
+    // until its replacement arrives.
+    if (_loadedKind == TrueImageKind::None) {
+      [self loadPlaceholder];
+    }
   }
+}
+
+/// Loads the placeholder for a pending source into an empty view. A
+/// placeholder already showing is kept; a remote one is answered from the
+/// cache unless it may hit the network. Silent on failure.
+- (void)loadPlaceholder
+{
+  [TrueImageLoader cancel:_placeholderToken];
+  _placeholderToken = nil;
+  if (_placeholder.length == 0) {
+    if (_placeholderShown) {
+      [self dropPlaceholder];
+      _imageLayer.contents = nil;
+    }
+    return;
+  }
+  TrueImageRequest request{
+      _placeholder, _blurRadius, TrueImageBlurDownscaleFactor(_blurRadius, _blurPixelsPerRadius)};
+  if (_placeholderShown && _placeholderRequest == request) {
+    return;
+  }
+  NSURL *url = TrueImageURLFromSource(_placeholder);
+  if (!url) {
+    UIImage *image = [TrueImageResources imageNamed:_placeholder traits:self.traitCollection];
+    if (image) {
+      [self showPlaceholder:image request:request isResource:YES];
+    }
+    return;
+  }
+  [TrueImageLoader configureOnce];
+  BOOL remote = [url.scheme hasPrefix:@"http"];
+  NSUInteger gen = _generation;
+  __weak __typeof(self) weakSelf = self;
+  _placeholderToken = [TrueImageLoader loadURL:url
+                                    blurRadius:request.blurRadius
+                                 blurDownscale:request.blurDownscale
+                                       headers:_placeholderHeaders
+                                     cacheOnly:remote && !_placeholderFromNetwork
+                                    completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
+                                      __typeof(self) self = weakSelf;
+                                      // Stale once the image arrived or the source moved on.
+                                      if (!self || self->_generation != gen || self->_loadedKind != TrueImageKind::None) {
+                                        return;
+                                      }
+                                      self->_placeholderToken = nil;
+                                      if (image) {
+                                        [self showPlaceholder:image request:request isResource:NO];
+                                      }
+                                    }];
+}
+
+- (void)showPlaceholder:(UIImage *)image request:(TrueImageRequest)request isResource:(BOOL)isResource
+{
+  [self interruptFade];
+  _placeholderShown = YES;
+  _placeholderRequest = request;
+  _placeholderImage = image;
+  _placeholderIsResource = isResource;
+  [self applyGravity];
+  if (isResource) {
+    CGSize pixelSize = CGSizeZero;
+    CGImageRef raster = [TrueImageResources rasterize:image
+                                                 size:self.bounds.size
+                                                scale:[self displayScale]
+                                                 tint:_tint
+                                                 mode:_fitMode
+                                               traits:self.traitCollection
+                                            pixelSize:&pixelSize];
+    if (!raster) {
+      // Zero bounds: layoutSubviews rasterises once there is a size.
+      return;
+    }
+    _imageLayer.contentsGravity = kCAGravityResize;
+    _imageLayer.contents = (__bridge id)raster;
+    CGImageRelease(raster);
+  } else {
+    _imageLayer.contents = (__bridge id)image.CGImage;
+  }
+  _imageLayer.opacity = 1;
+}
+
+/// Forgets the placeholder without touching the layer; the caller decides
+/// what replaces its contents.
+- (void)dropPlaceholder
+{
+  [TrueImageLoader cancel:_placeholderToken];
+  _placeholderToken = nil;
+  _placeholderShown = NO;
+  _placeholderImage = nil;
 }
 
 /// Scheme-less sources: inflated and drawn in the same frame, never faded.
@@ -257,6 +374,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
     return;
   }
   [self interruptFade];
+  [self dropPlaceholder];
   _loadedKind = TrueImageKind::Resource;
   _loadedRequest = request;
   _loadedImage = image;
@@ -270,12 +388,15 @@ enum class TrueImageKind { None, Bitmap, Resource };
   [TrueImageLoader cancel:_pendingToken];
   _pendingToken = nil;
   _hasPending = NO;
+  [TrueImageLoader cancel:_placeholderToken];
+  _placeholderToken = nil;
   _generation++;
 }
 
 - (void)clear
 {
   [self cancelPending];
+  [self dropPlaceholder];
   [self interruptFade];
   _imageLayer.contents = nil;
   _imageLayer.opacity = 1;
@@ -293,7 +414,10 @@ enum class TrueImageKind { None, Bitmap, Resource };
   // Read the model layer, not the presentation layer: a clear followed by a
   // new image inside one transaction must count as an empty layer.
   BOOL hasContents = _imageLayer.contents != nil;
-  BOOL fade = TrueImageShouldFade(_transition, fromMemory, hasContents, NO);
+  // Leaving a placeholder is its own transition; it is never a late arrival.
+  NSInteger transitionMs = _placeholderShown ? _placeholderTransition : _transition;
+  BOOL fade = TrueImageShouldFade(transitionMs, fromMemory, hasContents, NO);
+  [self dropPlaceholder];
   _loadedKind = TrueImageKind::Bitmap;
   _loadedRequest = request;
   _loadedImage = image;
@@ -308,7 +432,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   }
 
   if (fade) {
-    [self runFadeTo:contents hasContents:hasContents];
+    [self runFadeTo:contents hasContents:hasContents durationMs:transitionMs];
     if (_onDisplay) {
       _onDisplay();
     }
@@ -334,7 +458,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   [_imageLayer removeAnimationForKey:kFadeKey];
 }
 
-- (void)runFadeTo:(id)contents hasContents:(BOOL)hasContents
+- (void)runFadeTo:(id)contents hasContents:(BOOL)hasContents durationMs:(NSInteger)durationMs
 {
   CABasicAnimation *running = (CABasicAnimation *)[_imageLayer animationForKey:kFadeKey];
   BOOL resumingOpacity = [running isKindOfClass:CABasicAnimation.class] &&
@@ -358,7 +482,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
       _imageLayer.contents = contents;
       break;
   }
-  animation.duration = TrueImageFadeDuration(_transition);
+  animation.duration = TrueImageFadeDuration(durationMs);
 
   _fadeToken++;
   NSUInteger token = _fadeToken;

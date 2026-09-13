@@ -42,6 +42,13 @@ class TrueImageView(context: Context) : View(context) {
   var blurPixelsPerRadius: Float = Blur.DEFAULT_PIXELS_PER_RADIUS
   var tintColor: Int? = null
   var recyclingKey: String? = null
+  /** Shown into an empty view until [source] loads. Never fades in, reports nothing. */
+  var placeholder: String? = null
+  var placeholderHeaders: Map<String, String>? = null
+  /** Crossfade from the placeholder to the image, in milliseconds. 0 cuts. */
+  var placeholderTransitionMs: Int = 0
+  /** Whether a remote placeholder may be fetched; off, it shows only when cached. */
+  var placeholderFromNetwork: Boolean = false
 
   // MARK: State
 
@@ -52,7 +59,7 @@ class TrueImageView(context: Context) : View(context) {
    * keeps the sharp original as the source for re-blurs and as the size the
    * fit is computed from; [blurred] is what gets drawn.
    */
-  private class Layer(val request: Request, val fromResource: Boolean) {
+  private class Layer(val request: Request, val fromResource: Boolean, val isPlaceholder: Boolean = false) {
     var drawable: Drawable? = null
     var target: Target<Drawable>? = null
     var fromMemory = false
@@ -65,6 +72,7 @@ class TrueImageView(context: Context) : View(context) {
   private var current: Layer? = null
   private var previous: Layer? = null
   private var pending: Layer? = null
+  private var pendingPlaceholder: Layer? = null
   private var crossfade: Crossfade? = null
   /** True while the running crossfade is a fade-in over an empty view. */
   private var fadeFromEmpty = false
@@ -73,6 +81,7 @@ class TrueImageView(context: Context) : View(context) {
   private var appliedTint: Int? = null
   private var appliedBlur = 0f
   private var appliedBlurPixelsPerRadius = Blur.DEFAULT_PIXELS_PER_RADIUS
+  private var appliedPlaceholder: String? = null
 
   private val filter = PaintFlagsDrawFilter(0, Paint.FILTER_BITMAP_FLAG)
 
@@ -84,6 +93,7 @@ class TrueImageView(context: Context) : View(context) {
   internal val hasPendingLoad: Boolean get() = pending != null
   internal val currentDrawable: Drawable? get() = current?.drawable
   internal val currentBlurred: Drawable? get() = current?.blurred
+  internal val isShowingPlaceholder: Boolean get() = current?.isPlaceholder == true
   internal val fadeAlpha: Float? get() = crossfade?.alpha(now())
 
   init {
@@ -119,17 +129,25 @@ class TrueImageView(context: Context) : View(context) {
       current?.let { reblur(it) }
     }
 
+    val placeholderChanged = placeholder != appliedPlaceholder
+    appliedPlaceholder = placeholder
+
     val src = source
     if (src.isNullOrEmpty()) {
       clear()
       return
     }
     val request = Request(src)
-    if (current?.request == request) {
-      cancelPending()
+    current?.let {
+      if (!it.isPlaceholder && it.request == request) {
+        cancelPending()
+        return
+      }
+    }
+    if (pending?.request == request) {
+      if (placeholderChanged) loadPlaceholder()
       return
     }
-    if (pending?.request == request) return
     load(request)
   }
 
@@ -220,11 +238,70 @@ class TrueImageView(context: Context) : View(context) {
     TrueImageRequests.drawable(TrueImageRequests.glide(context), model)
       .listener(listener)
       .into(target)
+    // Only an empty view gets a placeholder; a displayed image stays up
+    // until its replacement arrives.
+    if (current == null && pending === layer) loadPlaceholder()
+  }
+
+  /**
+   * Loads the placeholder for a pending source into an empty view. One
+   * already showing is kept. A remote placeholder is answered from Glide's
+   * caches unless it may hit the network. Silent on failure.
+   */
+  private fun loadPlaceholder() {
+    cancelPendingPlaceholder()
+    val src = placeholder
+    if (src.isNullOrEmpty()) {
+      current?.let { if (it.isPlaceholder) { releaseLayer(it); current = null; invalidate() } }
+      return
+    }
+    current?.let { if (it.isPlaceholder && it.request.source == src) return }
+    val request = Request(src)
+
+    val vector = TrueImageResources.vector(context, src)
+    if (vector != null) {
+      val layer = Layer(request, fromResource = true, isPlaceholder = true)
+      layer.drawable = vector.mutate()
+      pendingPlaceholder = layer
+      presentPlaceholder(layer)
+      return
+    }
+    val model = TrueImageRequests.model(context, src, placeholderHeaders) ?: return
+    val layer = Layer(request, fromResource = model is Int, isPlaceholder = true)
+    val target = object : CustomTarget<Drawable>() {
+      override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
+        if (pendingPlaceholder !== layer) return
+        layer.drawable = resource.mutate()
+        presentPlaceholder(layer)
+      }
+
+      override fun onLoadFailed(errorDrawable: Drawable?) {
+        if (pendingPlaceholder === layer) pendingPlaceholder = null
+      }
+
+      override fun onLoadCleared(placeholder: Drawable?) {
+        layer.drawable = null
+        invalidate()
+      }
+    }
+    layer.target = target
+    pendingPlaceholder = layer
+    val cacheOnly = !placeholderFromNetwork && Source.kindOf(src) == SourceKind.REMOTE
+    TrueImageRequests.drawable(TrueImageRequests.glide(context), model)
+      .onlyRetrieveFromCache(cacheOnly)
+      .into(target)
   }
 
   private fun cancelPending() {
+    cancelPendingPlaceholder()
     val layer = pending ?: return
     pending = null
+    releaseLayer(layer)
+  }
+
+  private fun cancelPendingPlaceholder() {
+    val layer = pendingPlaceholder ?: return
+    pendingPlaceholder = null
     releaseLayer(layer)
   }
 
@@ -281,6 +358,48 @@ class TrueImageView(context: Context) : View(context) {
     }
   }
 
+  /** The placeholder path of [present]: blur if set, then show without events. */
+  private fun presentPlaceholder(layer: Layer) {
+    val drawable = layer.drawable ?: return
+    applyTint(layer)
+    if (blurRadius <= 0f) {
+      showPlaceholder(layer)
+      return
+    }
+    val factor = Blur.downscaleFactor(blurRadius, blurPixelsPerRadius)
+    val key = TrueImageBlur.key(layer.request.source, blurRadius, factor, tintOf(layer))
+    TrueImageBlur.cached(key)?.let {
+      layer.blurred = BitmapDrawable(resources, it)
+      layer.blurKey = key
+      showPlaceholder(layer)
+      return
+    }
+    TrueImageBlur.make(drawable, blurRadius, factor, key) { bitmap ->
+      if (pendingPlaceholder !== layer) return@make
+      if (bitmap != null) {
+        layer.blurred = BitmapDrawable(resources, bitmap)
+        layer.blurKey = key
+      }
+      showPlaceholder(layer)
+    }
+  }
+
+  /**
+   * A placeholder draws at once and only into a view that is still empty
+   * and still waiting; if the image got there first it is dropped unseen.
+   */
+  private fun showPlaceholder(layer: Layer) {
+    pendingPlaceholder = null
+    if (current != null || pending == null) {
+      releaseLayer(layer)
+      return
+    }
+    crossfade = null
+    current = layer
+    layer.display?.alpha = 255
+    invalidate()
+  }
+
   /**
    * A blur change on a displayed image re-blurs the sharp original it kept.
    * The old blur stays up until the new one is ready; only clearing the blur
@@ -318,8 +437,11 @@ class TrueImageView(context: Context) : View(context) {
 
   private fun show(layer: Layer) {
     val drawable = layer.drawable ?: return
+    cancelPendingPlaceholder()
     val hasContent = current?.drawable != null
-    val fade = transitionMs > 0 && !layer.fromResource && !(layer.fromMemory && !hasContent)
+    // Leaving a placeholder is its own transition; it is never a late arrival.
+    val duration = if (current?.isPlaceholder == true) placeholderTransitionMs else transitionMs
+    val fade = duration > 0 && !layer.fromResource && !(layer.fromMemory && !hasContent)
     applyTint(layer)
 
     val now = now()
@@ -349,7 +471,7 @@ class TrueImageView(context: Context) : View(context) {
     if (fade) {
       // The interrupted crossfade never completes, so it never reports
       // onDisplayEnd; this one reports in its turn.
-      crossfade = Crossfade(transitionMs.toLong(), now, startAlpha)
+      crossfade = Crossfade(duration.toLong(), now, startAlpha)
       fadeFromEmpty = previous == null
       emitDisplay()
       postInvalidateOnAnimation()

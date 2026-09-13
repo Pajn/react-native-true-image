@@ -219,6 +219,116 @@
   XCTAssertEqual(h.events.count, 0u, @"the shrink factor is 1 either way, so nothing reloads");
 }
 
+- (void)testPlaceholderShowsUntilTheImageLoadsThenCrossfades
+{
+  self.network.dataByURL[_b] = [TrueImageTestCase pngWithSize:CGSizeMake(4, 4) color:UIColor.blueColor];
+  [self prefetch:@[ _b ]];
+  [self.network.hang addObject:_a];
+  TrueImageHarness *h = [self harness];
+  h.view.placeholder = _b;
+  h.view.placeholderTransition = 200;
+  [h setSource:_a transition:0 recyclingKey:nil];
+  XCTAssertTrue([self waitFor:^{
+    return h.imageLayer.contents != nil;
+  }]);
+  XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 4u, @"the placeholder is up");
+  XCTAssertEqual(h.events.count, 0u, @"a placeholder reports nothing");
+  XCTAssertFalse(h.isFading);
+
+  XCTAssertTrue([self waitFor:^{
+    return [self.network fetchCount:self->_a] == 1;
+  }]);
+  [self.network release:_a];
+  XCTAssertTrue([self waitForEvents:h count:2]);
+  XCTAssertEqualObjects(h.events, (@[ @"load", @"display" ]));
+  CABasicAnimation *fade = (CABasicAnimation *)[h.imageLayer animationForKey:@"fade"];
+  XCTAssertEqualObjects(fade.keyPath, @"contents", @"leaving the placeholder crossfades");
+  XCTAssertEqualWithAccuracy(fade.duration, 0.2, 0.001);
+  XCTAssertTrue([self waitForEvents:h count:3]);
+  XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 8u);
+}
+
+- (void)testPlaceholderToImageCutsWhenItsTransitionIsZero
+{
+  [self prefetch:@[ _b ]];
+  [self.network.hang addObject:_a];
+  TrueImageHarness *h = [self harness];
+  h.view.placeholder = _b;
+  h.view.placeholderTransition = 0;
+  [h setSource:_a transition:300 recyclingKey:nil];
+  XCTAssertTrue([self waitFor:^{
+    return h.imageLayer.contents != nil;
+  }]);
+  XCTAssertTrue([self waitFor:^{
+    return [self.network fetchCount:self->_a] == 1;
+  }]);
+  [self.network release:_a];
+  XCTAssertTrue([self waitForEvents:h count:3]);
+  XCTAssertEqualObjects(h.events, (@[ @"load", @"display", @"displayEnd" ]));
+  XCTAssertFalse(h.isFading);
+}
+
+- (void)testCacheOnlyPlaceholderIsNeverFetched
+{
+  [self.network.hang addObject:_a];
+  TrueImageHarness *h = [self harness];
+  h.view.placeholder = _b;
+  [h setSource:_a transition:0 recyclingKey:nil];
+  [self spin:0.2];
+  XCTAssertNil(h.imageLayer.contents);
+  XCTAssertEqual([self.network fetchCount:_b], 0u, @"no network for a cache-only placeholder");
+
+  NSString *other = @"https://cdn.example.com/b2.jpg";
+  h.view.placeholderFromNetwork = YES;
+  h.view.placeholder = other;
+  [h.view commit];
+  XCTAssertTrue([self waitFor:^{
+    return h.imageLayer.contents != nil;
+  }]);
+  XCTAssertEqual([self.network fetchCount:other], 1u);
+  XCTAssertEqual(h.events.count, 0u);
+}
+
+- (void)testMemoryHitSkipsThePlaceholder
+{
+  self.network.dataByURL[_b] = [TrueImageTestCase pngWithSize:CGSizeMake(4, 4) color:UIColor.blueColor];
+  [self prefetch:@[ _a, _b ]];
+  TrueImageHarness *h = [self harness];
+  h.view.placeholder = _b;
+  [h setSource:_a transition:300 recyclingKey:nil];
+  XCTAssertEqualObjects(h.events, (@[ @"load", @"display", @"displayEnd" ]));
+  XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 8u, @"the image, not the placeholder");
+  XCTAssertFalse(h.isFading);
+}
+
+- (void)testPlaceholderDoesNotReplaceADisplayedImage
+{
+  [self prefetch:@[ _a ]];
+  [self.network.hang addObject:_b];
+  NSString *thumb = @"https://cdn.example.com/thumb.jpg";
+  TrueImageHarness *h = [self harness];
+  h.view.placeholder = thumb;
+  h.view.placeholderFromNetwork = YES;
+  [h setSource:_a transition:0 recyclingKey:nil];
+  [h setSource:_b transition:0 recyclingKey:nil];
+  [self spin:0.2];
+  XCTAssertEqual([self.network fetchCount:thumb], 0u, @"a displayed image stays up; no placeholder is even loaded");
+  XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 8u);
+}
+
+- (void)testRecyclingKeyChangeShowsThePlaceholderAgain
+{
+  NSString *thumb = @"https://cdn.example.com/thumb.jpg";
+  self.network.dataByURL[thumb] = [TrueImageTestCase pngWithSize:CGSizeMake(4, 4) color:UIColor.blueColor];
+  [self prefetch:@[ _a, thumb ]];
+  [self.network.hang addObject:_b];
+  TrueImageHarness *h = [self harness];
+  h.view.placeholder = thumb;
+  [h setSource:_a transition:0 recyclingKey:@"1"];
+  [h setSource:_b transition:0 recyclingKey:@"2"];
+  XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 4u, @"a cleared view shows the placeholder");
+}
+
 - (void)testResizeRefinesToALargerThumbnail
 {
   self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(1000, 1000) color:UIColor.greenColor];

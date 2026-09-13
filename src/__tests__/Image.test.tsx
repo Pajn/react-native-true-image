@@ -195,6 +195,36 @@ describe('props', () => {
     expect(nativeProps().blurRadius).toBe(0);
   });
 
+  it('resolves the placeholder like a source and defaults its options', async () => {
+    await render(
+      <Image
+        source="https://x/a.jpg"
+        placeholder={{ uri: 'https://x/a-thumb.jpg', headers: { A: '1' } }}
+      />
+    );
+    expect(nativeProps().placeholder).toBe('https://x/a-thumb.jpg');
+    expect(nativeProps().placeholderHeaders).toEqual([
+      { name: 'A', value: '1' },
+    ]);
+    expect(nativeProps().placeholderTransition).toBe(DEFAULT_TRANSITION);
+    expect(nativeProps().placeholderFromNetwork).toBe(false);
+  });
+
+  it('passes explicit placeholder options through', async () => {
+    await render(
+      <Image
+        source="https://x/a.jpg"
+        placeholder="https://x/a-thumb.jpg"
+        placeholderTransition={0}
+        placeholderPolicy="network"
+      />
+    );
+    expect(nativeProps().placeholderTransition).toBe(0);
+    expect(nativeProps().placeholderFromNetwork).toBe(true);
+    await render(<Image source="https://x/a.jpg" />);
+    expect(nativeProps().placeholder).toBeUndefined();
+  });
+
   it('defaults blurPixelsPerRadius to 2 and passes an override through', async () => {
     await render(<Image source="https://x/a.jpg" />);
     expect(nativeProps().blurPixelsPerRadius).toBe(2);

@@ -89,11 +89,12 @@ static SDWebImageManager *Manager(void)
      blurRadius:(CGFloat)blurRadius
   blurDownscale:(CGFloat)blurDownscale
         headers:(NSDictionary<NSString *, NSString *> *)headers
+      cacheOnly:(BOOL)cacheOnly
      completion:(TrueImageLoadCompletion)completion
 {
   return [Manager()
        loadImageWithURL:url
-                options:kOptions
+                options:cacheOnly ? (kOptions | SDWebImageFromCacheOnly) : kOptions
                 context:ContextFor(blurRadius, blurDownscale, headers)
                progress:nil
               completed:^(UIImage *image, NSData *data, NSError *error, SDImageCacheType cacheType, BOOL finished, NSURL *imageURL) {

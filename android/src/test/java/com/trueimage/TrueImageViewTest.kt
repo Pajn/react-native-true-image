@@ -246,6 +246,98 @@ class TrueImageViewTest : GlideTestCase() {
   }
 
   @Test
+  fun placeholderShowsUntilTheImageLoadsThenCrossfades() {
+    prefetch(b)
+    network.hang += a
+    val h = harness()
+    h.view.placeholder = b
+    h.view.placeholderTransitionMs = 200
+    h.set(a, transition = 0)
+    settle { h.view.isShowingPlaceholder }
+    assertTrue(h.view.hasImage)
+    assertTrue("a placeholder reports nothing", h.events.isEmpty())
+    assertFalse(h.view.isCrossfading)
+    network.release(a)
+    settle { h.names.contains("topLoad") }
+    assertEquals(listOf("topLoad", "topDisplay"), h.names)
+    assertTrue("leaving the placeholder crossfades over placeholderTransition", h.view.isCrossfading)
+    assertFalse(h.view.isShowingPlaceholder)
+    advance(250)
+    h.draw()
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+  }
+
+  @Test
+  fun placeholderToImageCutsWhenItsTransitionIsZero() {
+    prefetch(b)
+    network.hang += a
+    val h = harness()
+    h.view.placeholder = b
+    h.view.placeholderTransitionMs = 0
+    h.set(a, transition = 300)
+    settle { h.view.isShowingPlaceholder }
+    network.release(a)
+    settle { h.names.contains("topLoad") }
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+    assertFalse(h.view.isCrossfading)
+  }
+
+  @Test
+  fun cacheOnlyPlaceholderIsNeverFetched() {
+    network.hang += a
+    val h = harness()
+    h.view.placeholder = b
+    h.set(a)
+    settle()
+    assertFalse(h.view.hasImage)
+    assertNull("no network for a cache-only placeholder", network.fetches[b])
+
+    h.view.placeholderFromNetwork = true
+    h.view.placeholder = b + "?v=2"
+    h.view.commit()
+    settle { h.view.isShowingPlaceholder }
+    assertEquals(1, network.fetches[b + "?v=2"])
+    assertTrue(h.events.isEmpty())
+  }
+
+  @Test
+  fun memoryHitSkipsThePlaceholder() {
+    prefetch(a, b)
+    val h = harness()
+    h.view.placeholder = b
+    h.set(a)
+    assertFalse(h.view.isShowingPlaceholder)
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+    assertEquals(a, h.events[0].second["source"])
+  }
+
+  @Test
+  fun placeholderDoesNotReplaceADisplayedImage() {
+    prefetch(a)
+    network.hang += b
+    val h = harness()
+    h.view.placeholder = "https://cdn.example.com/thumb.jpg"
+    h.view.placeholderFromNetwork = true
+    h.set(a)
+    h.set(b)
+    settle()
+    assertFalse(h.view.isShowingPlaceholder)
+    assertNull("a displayed image stays up; no placeholder is even loaded", network.fetches[h.view.placeholder!!])
+  }
+
+  @Test
+  fun recyclingKeyChangeShowsThePlaceholderAgain() {
+    val thumb = "https://cdn.example.com/thumb.jpg"
+    prefetch(a, thumb)
+    network.hang += b
+    val h = harness()
+    h.view.placeholder = thumb
+    h.set(a, recyclingKey = "1")
+    h.set(b, recyclingKey = "2")
+    assertTrue(h.view.isShowingPlaceholder)
+  }
+
+  @Test
   fun newerSourceCancelsAPendingBlur() {
     prefetch(a, b)
     val h = harness()

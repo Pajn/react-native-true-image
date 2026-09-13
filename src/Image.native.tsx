@@ -74,6 +74,9 @@ function ImageComponent({
   resizeMode = 'cover',
   blurRadius = 0,
   blurPixelsPerRadius = DEFAULT_BLUR_PIXELS_PER_RADIUS,
+  placeholder,
+  placeholderTransition,
+  placeholderPolicy = 'cache-only',
   onLoad,
   onError,
   onDisplay,
@@ -84,6 +87,8 @@ function ImageComponent({
 }: ImageProps & { ref?: Ref<ImageRef> }) {
   const latest = useLatest({ onLoad, onError, onDisplay, onDisplayEnd });
   const resolved = resolveSource(source);
+  const resolvedPlaceholder = resolveSource(placeholder);
+  const resolvedTransition = resolveTransition(source, transition);
 
   // Native only gets a handler when the caller supplied one, so the
   // native side can skip emitting events nobody listens to. The wrappers
@@ -117,10 +122,14 @@ function ImageComponent({
       ref={ref}
       source={resolved.uri}
       headers={resolved.headers}
-      transition={resolveTransition(source, transition)}
+      transition={resolvedTransition}
       resizeMode={resizeMode}
       blurRadius={blurRadius}
       blurPixelsPerRadius={blurPixelsPerRadius}
+      placeholder={resolvedPlaceholder.uri}
+      placeholderHeaders={resolvedPlaceholder.headers}
+      placeholderTransition={placeholderTransition ?? resolvedTransition}
+      placeholderFromNetwork={placeholderPolicy === 'network'}
       style={[styles.image, style]}
       {...handlers}
     />

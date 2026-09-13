@@ -19,6 +19,14 @@ export type PrefetchSource = string | ImageURISource;
 
 export type ResizeMode = 'cover' | 'contain' | 'stretch' | 'center';
 
+/**
+ * Where a remote placeholder may come from. `cache-only` shows it only if it
+ * is already in the memory or disk cache; `network` fetches it like any
+ * image. Local placeholders (`require()` assets, native resource names,
+ * `file://` URIs) always show.
+ */
+export type PlaceholderPolicy = 'cache-only' | 'network';
+
 export interface ImageLoadEvent {
   /** Decoded width in pixels. */
   width: number;
@@ -58,6 +66,22 @@ export interface ImageProps extends ViewProps {
   blurPixelsPerRadius?: number;
   /** Applied to native resource images only; remote bitmaps are never tinted. */
   tintColor?: ColorValue;
+  /**
+   * Shown into an empty view until `source` loads, then crossfaded out over
+   * `placeholderTransition`. Accepts the same shapes as `source`. It appears
+   * only while the view is empty: on mount, after a `recyclingKey` change, or
+   * after `source` was cleared. A displayed image is never replaced by a
+   * placeholder while its successor loads. It draws at once, never fades in,
+   * and reports no events; `onLoad` and friends describe `source` alone.
+   */
+  placeholder?: ImageSource;
+  /**
+   * Crossfade from the placeholder to the image, in milliseconds. Defaults
+   * to the resolved `transition`; `0` cuts.
+   */
+  placeholderTransition?: number;
+  /** @default 'cache-only' */
+  placeholderPolicy?: PlaceholderPolicy;
   /**
    * Changing this clears the view synchronously before the next source loads.
    * Set it to the row's item id in recycled lists so a reused row never

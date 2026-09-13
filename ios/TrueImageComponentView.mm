@@ -107,6 +107,19 @@ static TrueImageFitMode TrueImageFitModeFromProp(TrueImageViewResizeMode mode)
   _view.blurPixelsPerRadius = newProps.blurPixelsPerRadius;
   _view.tint = RCTUIColorFromSharedColor(newProps.tintColor);
   _view.recyclingKey = newProps.recyclingKey.empty() ? nil : RCTNSStringFromString(newProps.recyclingKey);
+  _view.placeholder = newProps.placeholder.empty() ? nil : RCTNSStringFromString(newProps.placeholder);
+  if (newProps.placeholderHeaders.empty()) {
+    _view.placeholderHeaders = nil;
+  } else {
+    NSMutableDictionary<NSString *, NSString *> *headers =
+        [NSMutableDictionary dictionaryWithCapacity:newProps.placeholderHeaders.size()];
+    for (const auto &header : newProps.placeholderHeaders) {
+      headers[RCTNSStringFromString(header.name)] = RCTNSStringFromString(header.value);
+    }
+    _view.placeholderHeaders = headers;
+  }
+  _view.placeholderTransition = newProps.placeholderTransition;
+  _view.placeholderFromNetwork = newProps.placeholderFromNetwork;
 
   [super updateProps:props oldProps:oldProps];
 }

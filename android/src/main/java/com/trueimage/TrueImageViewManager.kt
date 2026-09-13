@@ -70,6 +70,26 @@ class TrueImageViewManager :
     view.recyclingKey = value
   }
 
+  @ReactProp(name = "placeholder")
+  override fun setPlaceholder(view: TrueImageView, value: String?) {
+    view.placeholder = value
+  }
+
+  @ReactProp(name = "placeholderHeaders")
+  override fun setPlaceholderHeaders(view: TrueImageView, value: ReadableArray?) {
+    view.placeholderHeaders = TrueImageHeaders.fromArray(value)
+  }
+
+  @ReactProp(name = "placeholderTransition")
+  override fun setPlaceholderTransition(view: TrueImageView, value: Int) {
+    view.placeholderTransitionMs = value
+  }
+
+  @ReactProp(name = "placeholderFromNetwork")
+  override fun setPlaceholderFromNetwork(view: TrueImageView, value: Boolean) {
+    view.placeholderFromNetwork = value
+  }
+
   /** All props for one update have been set; apply them together. */
   override fun onAfterUpdateTransaction(view: TrueImageView) {
     super.onAfterUpdateTransaction(view)

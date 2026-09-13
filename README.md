@@ -75,6 +75,9 @@ Clipping relies on the default `overflow: 'hidden'`; overriding it to
 | `blurPixelsPerRadius` | 2 | Pixels the blur radius spans after the pre-blur shrink; `0` blurs at full size. See [Blur cost](#blur-cost) |
 | `tintColor` | | Native resources only |
 | `recyclingKey` | | Clears the view synchronously when it changes, before the next source loads |
+| `placeholder` | | Shown into an empty view until `source` loads. Same shapes as `source`. See [Placeholder](#placeholder) |
+| `placeholderTransition` | same as `transition` | Crossfade from the placeholder to the image, in milliseconds; `0` cuts |
+| `placeholderPolicy` | `'cache-only'` | `cache-only` shows a remote placeholder only if already cached; `network` fetches it |
 
 ### Events
 
@@ -100,6 +103,25 @@ On Android the prefetch loop runs on a background thread: each load is
 started with `submit()` and awaited there, and the main looper sees a single
 post per batch. Prefetches usually race the mount work they feed, so they
 stay out of its queue.
+
+### Placeholder
+
+A placeholder stands in while `source` loads: a low-resolution copy that a
+list row already cached, or a bundled asset. It shows only into an empty
+view, which is on mount, after a `recyclingKey` change, or after `source`
+was cleared. A displayed image is never swapped for a placeholder while its
+replacement loads. The placeholder draws the moment it is available, never
+fades in, and reports no events, so `onLoad` and friends always describe
+`source`. When the image arrives it crossfades over `placeholderTransition`
+or cuts at `0`. An image that is a memory hit shows at once and the
+placeholder is never loaded.
+
+`placeholderPolicy` decides where a remote placeholder may come from.
+`cache-only` reads the memory and disk caches and gives up silently
+otherwise, so it never costs a request. `network` fetches it like any other
+image, through the same request as a view or prefetch of that URL, so it
+lands in the shared cache. Local placeholders always show. `blurRadius` and
+`resizeMode` apply to the placeholder as well.
 
 ## Blur cost
 

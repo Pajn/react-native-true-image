@@ -23,10 +23,13 @@ typedef void (^TrueImageLoadCompletion)(UIImage *_Nullable image, BOOL fromMemor
 /// Headers are sent with the request and are not part of the cache key.
 /// A blurred load shrinks the cached original by `blurDownscale` before
 /// blurring; see TrueImageBlurTransformer and TrueImageBlurDownscaleFactor.
+/// `cacheOnly` answers from the memory or disk cache and fails without
+/// touching the network otherwise.
 + (nullable id)loadURL:(NSURL *)url
             blurRadius:(CGFloat)blurRadius
          blurDownscale:(CGFloat)blurDownscale
                headers:(nullable NSDictionary<NSString *, NSString *> *)headers
+             cacheOnly:(BOOL)cacheOnly
             completion:(TrueImageLoadCompletion)completion;
 
 + (void)cancel:(nullable id)token;
