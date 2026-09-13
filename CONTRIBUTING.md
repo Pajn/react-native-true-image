@@ -83,16 +83,46 @@ yarn test
 
 
 
-### Publishing to npm
+### Commit messages
 
-We use [release-it](https://github.com/release-it/release-it) to make it easier to publish new versions. It handles common tasks like bumping version based on semver, creating tags and releases etc.
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
+`feat:`, `fix:`, `perf:`, `docs:`, `refactor:`, `test:`, `chore:` and so on, with
+`!` or a `BREAKING CHANGE:` footer for breaking changes. The changelog and the
+version bump are derived from them, so a `fix` becomes a patch release, a
+`feat` a minor one, and a breaking change a major one. CI checks every commit
+on a pull request with commitlint; run `yarn commitlint --from main` locally
+to check yours.
 
-To publish new versions, run the following:
+### Releasing
 
-```sh
-yarn release
-```
+Releases run from the **Release** workflow in GitHub Actions and publish to
+npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers).
+There is no npm token in the repository or its secrets: npm accepts the
+workflow's OpenID Connect identity because the package's trusted publisher
+configuration on npmjs.com names this repository, the `release.yml` workflow
+and the `npm` environment. Provenance is attached automatically.
 
+To cut a release, open the Actions tab, pick **Release**, and run it against
+`main`. Leave the increment empty to let the commits since the last tag decide
+it, or choose one explicitly. The workflow runs lint, typecheck and tests,
+then [release-it](https://github.com/release-it/release-it) bumps the version,
+updates `CHANGELOG.md`, commits, tags, publishes, and creates the GitHub
+release with the same notes.
+
+The `npm` environment can carry a required-reviewer rule if releases should
+need a second pair of eyes; the workflow already targets it.
+
+#### First publish of the package
+
+npm only lets a trusted publisher be configured on a package that already
+exists, so the very first version is published from a maintainer's machine:
+
+1. `npm login`, then `yarn release` and follow the prompts. release-it
+   publishes with your session.
+2. On npmjs.com, open the package's settings, add a trusted publisher of type
+   GitHub Actions with this repository, workflow file `release.yml` and
+   environment `npm`.
+3. `npm logout`. Every release from now on goes through the workflow.
 
 ### Scripts
 

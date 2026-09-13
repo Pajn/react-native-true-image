@@ -21,6 +21,7 @@
     "react-native.config.js",
     "!ios/build",
     "!android/build",
+    "!android/src/test",
     "!android/gradle",
     "!android/gradlew",
     "!android/gradlew.bat",
@@ -40,7 +41,7 @@
     "typecheck": "tsc",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "test": "jest",
-    "release": "release-it --only-version"
+    "release": "release-it"
   },
   "keywords": [
     "react-native",
@@ -68,6 +69,8 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
     "@eslint/compat": "^2.1.0",
     "@eslint/eslintrc": "^3.3.6",
     "@eslint/js": "^9.39.5",
@@ -161,19 +164,25 @@
   "release-it": {
     "git": {
       "commitMessage": "chore: release ${version}",
-      "tagName": "v${version}"
+      "tagName": "v${version}",
+      "requireCleanWorkingDir": true,
+      "requireBranch": "main"
     },
     "npm": {
-      "publish": true
+      "publish": true,
+      "skipChecks": true
     },
     "github": {
-      "release": true
+      "release": true,
+      "releaseName": "v${version}"
     },
     "plugins": {
       "@release-it/conventional-changelog": {
         "preset": {
-          "name": "angular"
-        }
+          "name": "conventionalcommits"
+        },
+        "infile": "CHANGELOG.md",
+        "header": "# Changelog\n\nAll notable changes to this project are documented here. The format follows [Conventional Commits](https://www.conventionalcommits.org/); entries are generated at release time.\n"
       }
     }
   },

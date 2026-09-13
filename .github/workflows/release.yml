@@ -1,0 +1,76 @@
+name: Release
+
+# Publishes to npm with trusted publishing (OIDC). There is no npm token:
+# npm accepts the workflow's identity because the package's trusted
+# publisher on npmjs.com names this repository, this workflow file and the
+# `npm` environment. Provenance is attached automatically.
+on:
+  workflow_dispatch:
+    inputs:
+      increment:
+        description: Version increment. Leave empty to derive it from the commits since the last tag.
+        type: choice
+        default: ''
+        options:
+          - ''
+          - patch
+          - minor
+          - major
+          - prepatch
+          - preminor
+          - premajor
+          - prerelease
+      preid:
+        description: Prerelease identifier, e.g. beta. Only used with a pre* increment.
+        type: string
+        default: ''
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write # release commit, tag and GitHub release
+      id-token: write # OIDC token for npm trusted publishing
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0 # release-it needs the tags and the commit history
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Use an npm with trusted publishing support
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Lint, typecheck and test
+        run: |
+          yarn lint
+          yarn typecheck
+          yarn test
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          args=(--ci)
+          if [ -n "${{ inputs.increment }}" ]; then
+            args+=("${{ inputs.increment }}")
+          fi
+          if [ -n "${{ inputs.preid }}" ]; then
+            args+=(--preRelease="${{ inputs.preid }}")
+          fi
+          yarn release "${args[@]}"
