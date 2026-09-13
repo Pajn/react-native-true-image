@@ -9,11 +9,7 @@
 
 #import "RCTFabricComponentsPlugins.h"
 
-#if __has_include(<TrueImage/TrueImage-Swift.h>)
-#import <TrueImage/TrueImage-Swift.h>
-#else
-#import "TrueImage-Swift.h"
-#endif
+#import "TrueImageView.h"
 
 using namespace facebook::react;
 

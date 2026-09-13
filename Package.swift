@@ -10,8 +10,8 @@ let package = Package(
   targets: [
     .target(
       name: "TrueImagePolicy",
-      path: "ios",
-      sources: ["TrueImagePolicy.swift"]
+      path: "ios/Policy",
+      publicHeadersPath: "include"
     ),
     .testTarget(
       name: "TrueImagePolicyTests",

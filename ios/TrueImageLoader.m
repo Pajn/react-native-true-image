@@ -2,6 +2,7 @@
 
 #import <SDWebImage/SDWebImage.h>
 
+#import "TrueImagePolicy.h"
 #import "TrueImageWebPCoder.h"
 
 /// `.retryFailed` keeps a URL that failed once (a 404 during a network
@@ -50,11 +51,12 @@ static SDWebImagePrefetcher *Prefetcher(void)
 
 @implementation TrueImageLoader
 
-+ (void)configureOnceWithMaxMemoryCost:(NSUInteger)maxMemoryCost
++ (void)configureOnce
 {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
-    SDImageCache.sharedImageCache.config.maxMemoryCost = maxMemoryCost;
+    SDImageCache.sharedImageCache.config.maxMemoryCost =
+        TrueImageMemoryCacheCost(NSProcessInfo.processInfo.physicalMemory);
     // WebP is not decoded by default; most image CDNs serve it.
     [SDImageCodersManager.sharedManager addCoder:TrueImageWebPCoder.sharedCoder];
   });

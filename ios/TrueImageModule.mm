@@ -1,10 +1,7 @@
 #import "TrueImageModule.h"
 
-#if __has_include(<TrueImage/TrueImage-Swift.h>)
-#import <TrueImage/TrueImage-Swift.h>
-#else
-#import "TrueImage-Swift.h"
-#endif
+#import "TrueImageLoader.h"
+#import "TrueImagePolicy.h"
 
 @implementation TrueImageModule
 
@@ -15,16 +12,23 @@
 
 - (void)prefetch:(NSArray *)urls resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
-  NSMutableArray<NSString *> *sources = [NSMutableArray arrayWithCapacity:urls.count];
+  [TrueImageLoader configureOnce];
+  // Parse with the same rules the view uses; an unparseable source forces
+  // a false result.
+  NSMutableArray<NSURL *> *parsed = [NSMutableArray arrayWithCapacity:urls.count];
+  BOOL allValid = YES;
   for (id url in urls) {
-    if ([url isKindOfClass:NSString.class]) {
-      [sources addObject:url];
+    NSURL *parsedURL = [url isKindOfClass:NSString.class] ? TrueImageURLFromSource(url) : nil;
+    if (parsedURL) {
+      [parsed addObject:parsedURL];
+    } else {
+      allValid = NO;
     }
   }
-  [TrueImagePrefetch prefetch:sources
-                 completion:^(BOOL ok) {
-                   resolve(@(ok));
-                 }];
+  [TrueImageLoader prefetchURLs:parsed
+                     completion:^(BOOL ok) {
+                       resolve(@(ok && allValid));
+                     }];
 }
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:

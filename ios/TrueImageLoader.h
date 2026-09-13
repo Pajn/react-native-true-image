@@ -6,12 +6,11 @@ typedef void (^TrueImageLoadCompletion)(UIImage *_Nullable image, BOOL fromMemor
 
 /// The single place that knows how an image request is built, so that a
 /// prefetch and a view mounting later produce the identical cache key and
-/// the view's load becomes a synchronous memory hit. Objective-C because the
-/// imaging library does not define a module Swift could import.
+/// the view's load becomes a synchronous memory hit.
 @interface TrueImageLoader : NSObject
 
 /// Idempotent. Registers the WebP coder and caps the memory cache.
-+ (void)configureOnceWithMaxMemoryCost:(NSUInteger)maxMemoryCost;
++ (void)configureOnce;
 
 /// Returns a cancellable token. A memory hit calls `completion` synchronously.
 + (nullable id)loadURL:(NSURL *)url blurRadius:(CGFloat)blurRadius completion:(TrueImageLoadCompletion)completion;

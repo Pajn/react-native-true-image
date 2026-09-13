@@ -13,22 +13,9 @@ Pod::Spec.new do |s|
   s.platforms    = { :ios => min_ios_version_supported }
   s.source       = { :git => "https://github.com/pajn/react-native-true-image.git", :tag => "#{s.version}" }
 
-  s.source_files = "ios/**/*.{h,m,mm,swift}"
+  s.source_files = "ios/**/*.{h,m,mm}"
   s.exclude_files = "ios/Tests/**/*"
-  # The loader header is the one Objective-C surface the Swift view uses.
-  s.public_header_files = "ios/TrueImageLoader.h"
-  s.private_header_files = [
-    "ios/TrueImageComponentView.h",
-    "ios/TrueImageModule.h",
-    "ios/TrueImageWebPCoder.h",
-  ]
-  s.swift_version = "5.9"
-
-  # The Objective-C++ Fabric shell reaches the Swift view through the
-  # generated TrueImage-Swift.h, which needs the pod built as a module.
-  s.pod_target_xcconfig = {
-    "DEFINES_MODULE" => "YES",
-  }
+  s.private_header_files = "ios/**/*.h"
 
   s.dependency "SDWebImage", "~> 5.21"
 
