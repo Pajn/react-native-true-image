@@ -46,9 +46,11 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      # Trusted publishing needs npm 11.5.1 or later. Stay on the 11 line:
+      # npm 12 requires a newer Node than .nvmrc pins.
       - name: Use an npm with trusted publishing support
         run: |
-          npm install -g npm@latest
+          npm install -g npm@11
           npm --version
 
       - name: Configure git author
