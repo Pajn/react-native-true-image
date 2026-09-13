@@ -268,6 +268,23 @@ class TrueImageViewTest : GlideTestCase() {
   }
 
   @Test
+  fun crossfadeKeepsTheOutgoingImageOpaque() {
+    prefetch(b)
+    network.hang += a
+    val h = harness()
+    h.view.placeholder = b
+    h.view.placeholderTransitionMs = 200
+    h.set(a)
+    settle { h.view.isShowingPlaceholder }
+    network.release(a)
+    settle { h.view.isCrossfading }
+    advance(100)
+    h.draw()
+    assertEquals(255, h.view.previousAlpha)
+    assertTrue(h.view.currentDrawable!!.alpha in 1..254)
+  }
+
+  @Test
   fun placeholderToImageCutsWhenItsTransitionIsZero() {
     prefetch(b)
     network.hang += a

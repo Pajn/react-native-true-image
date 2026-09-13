@@ -54,9 +54,10 @@ object Fit {
 }
 
 /**
- * Linear alpha ramp for the incoming image. The outgoing image is drawn at
- * the complementary alpha. Starting above zero lets an image whose fade-in
- * was interrupted carry on from where it was instead of jumping.
+ * Linear alpha ramp for the incoming image, drawn over the outgoing one at
+ * full opacity so the view never loses coverage. Starting above zero lets
+ * an image whose fade-in was interrupted carry on from where it was instead
+ * of jumping.
  */
 class Crossfade(
   private val durationMs: Long,

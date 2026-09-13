@@ -1,4 +1,5 @@
-package com.trueimage
+
+  internal val previousAlpha: Int? get() = previous?.display?.alphapackage com.trueimage
 
 import android.content.Context
 import android.graphics.Canvas
@@ -504,7 +505,10 @@ class TrueImageView(context: Context) : View(context) {
     val now = now()
     val alpha = fade?.alpha(now) ?: 1f
 
-    previous?.let { draw(canvas, it, 1f - alpha) }
+    // The outgoing image stays fully opaque under the incoming one. Drawing
+    // it at the complementary alpha would dip the composite to 75 % coverage
+    // mid-fade and let the background through.
+    previous?.let { draw(canvas, it, 1f) }
     current?.let { draw(canvas, it, alpha) }
 
     if (fade != null) {
