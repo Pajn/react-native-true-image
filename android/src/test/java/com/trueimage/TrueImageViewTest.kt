@@ -1,0 +1,242 @@
+package com.trueimage
+
+import android.app.Activity
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import java.time.Duration
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowSystemClock
+
+/** Native view behaviour: fades, events, clearing, lifecycle. */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [27])
+class TrueImageViewTest : GlideTestCase() {
+  private val a = "https://cdn.example.com/a.jpg"
+  private val b = "https://cdn.example.com/b.jpg"
+
+  private class Harness(val view: TrueImageView) {
+    val events = mutableListOf<Pair<String, Map<String, Any>>>()
+    val names get() = events.map { it.first }
+
+    init {
+      view.eventSink = { name, payload -> events += name to payload }
+    }
+
+    fun set(source: String?, transition: Int = 0, recyclingKey: String? = null) {
+      view.source = source
+      view.transitionMs = transition
+      if (recyclingKey != null) view.recyclingKey = recyclingKey
+      view.commit()
+    }
+
+    fun draw() = view.draw(Canvas())
+  }
+
+  private fun harness() = Harness(TrueImageView(app))
+
+  private fun advance(ms: Long) = ShadowSystemClock.advanceBy(Duration.ofMillis(ms))
+
+  @Test
+  fun recycledViewWithCachedImageDrawsAtOnceWithoutFade() {
+    prefetch(a, b)
+    val h = harness()
+    h.set(a, transition = 300, recyclingKey = "1")
+    h.events.clear()
+    h.set(b, transition = 300, recyclingKey = "2")
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+    assertFalse(h.view.isCrossfading)
+  }
+
+  @Test
+  fun noFadePathEmitsAllThreeEventsInOneFrame() {
+    val h = harness()
+    h.set(a, transition = 0)
+    settle()
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+    assertEquals(8.0, h.events[0].second["width"])
+    assertEquals(a, h.events[0].second["source"])
+  }
+
+  @Test
+  fun fadePathEmitsDisplayEndOnlyWhenTheFadeEnds() {
+    val h = harness()
+    h.set(a, transition = 300)
+    settle()
+    assertEquals(listOf("topLoad", "topDisplay"), h.names)
+    assertTrue(h.view.isCrossfading)
+    advance(100)
+    h.draw()
+    assertEquals(listOf("topLoad", "topDisplay"), h.names)
+    advance(300)
+    h.draw()
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+    assertFalse(h.view.isCrossfading)
+  }
+
+  @Test
+  fun interruptedFadeReportsDisplayEndOnlyForTheImageStillShown() {
+    val h = harness()
+    h.set(a, transition = 300)
+    settle()
+    advance(100)
+    h.draw()
+    h.set(b, transition = 300)
+    settle()
+    assertEquals(listOf("topLoad", "topDisplay", "topLoad", "topDisplay"), h.names)
+    advance(500)
+    h.draw()
+    assertEquals(listOf("topLoad", "topDisplay", "topLoad", "topDisplay", "topDisplayEnd"), h.names)
+  }
+
+  @Test
+  fun nullSourceClearsAndEmitsNothing() {
+    prefetch(a)
+    val h = harness()
+    h.set(a)
+    h.events.clear()
+    h.set(null)
+    assertFalse(h.view.hasImage)
+    assertTrue(h.events.isEmpty())
+  }
+
+  @Test
+  fun recyclingKeyChangeClearsSynchronouslyBeforeTheNewLoad() {
+    prefetch(a)
+    network.hang += b
+    val h = harness()
+    h.set(a, recyclingKey = "1")
+    assertTrue(h.view.hasImage)
+    h.set(b, recyclingKey = "2")
+    assertFalse(h.view.hasImage)
+    assertTrue(h.view.hasPendingLoad)
+  }
+
+  @Test
+  fun staleTargetEmitsNeitherLoadNorError() {
+    network.hang += a
+    prefetch(b)
+    val h = harness()
+    h.set(a)
+    h.set(b)
+    h.events.clear()
+    network.release(a)
+    settle()
+    assertTrue(h.events.isEmpty())
+    assertTrue(h.view.hasImage)
+  }
+
+  @Test
+  fun loadCancelledByNewerSourceDoesNotEmitError() {
+    network.failAlways += a
+    network.hang += a
+    val h = harness()
+    h.set(a)
+    h.set(b)
+    settle()
+    assertFalse(h.names.contains("topError"))
+  }
+
+  @Test
+  fun unknownDrawableNameEmitsErrorAndLeavesViewEmpty() {
+    val h = harness()
+    h.set("no_such_drawable")
+    assertEquals(listOf("topError"), h.names)
+    assertEquals("no_such_drawable", h.events[0].second["source"])
+    assertFalse(h.view.hasImage)
+  }
+
+  @Test
+  fun failedRemoteLoadEmitsError() {
+    network.failAlways += a
+    val h = harness()
+    h.set(a)
+    settle()
+    assertEquals(listOf("topError"), h.names)
+  }
+
+  @Test
+  fun vectorResourceDrawsInTheSameFrameAndNeverFades() {
+    val h = harness()
+    h.set("true_image_test_vector", transition = 300)
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+    assertFalse(h.view.isCrossfading)
+    assertTrue(h.view.hasImage)
+  }
+
+  @Test
+  fun tintIsNotAppliedToRemoteBitmaps() {
+    prefetch(a)
+    val h = harness()
+    h.view.tintColor = 0xFFFF0000.toInt()
+    h.set(a)
+    val drawable = h.view.currentDrawable as BitmapDrawable
+    assertNull(drawable.paint.colorFilter)
+  }
+
+  @Test
+  fun blurStandInIsDroppedOnResizeAndRadiusChange() {
+    prefetch(a)
+    val h = harness()
+    h.view.blurRadius = 10f
+    h.view.layout(0, 0, 100, 100)
+    h.set(a)
+    h.draw()
+    assertTrue(h.view.hasBlurStandIn)
+    h.view.layout(0, 0, 200, 200)
+    assertFalse(h.view.hasBlurStandIn)
+    h.draw()
+    assertTrue(h.view.hasBlurStandIn)
+    h.view.blurRadius = 20f
+    h.view.commit()
+    assertFalse(h.view.hasBlurStandIn)
+  }
+
+  @Test
+  fun attachingReloadsAViewWhoseImageWasTaken() {
+    prefetch(a)
+    val h = harness()
+    h.view.source = a
+    assertFalse(h.view.hasImage)
+    val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+    activity.setContentView(h.view)
+    assertTrue(h.view.hasImage)
+    assertEquals(listOf("topLoad", "topDisplay", "topDisplayEnd"), h.names)
+  }
+
+  @Test
+  fun releaseClearsEverything() {
+    prefetch(a)
+    network.hang += b
+    val h = harness()
+    h.set(a, transition = 300)
+    h.set("https://cdn.example.com/c.jpg", transition = 300)
+    settle()
+    assertTrue(h.view.isCrossfading)
+    h.view.source = b
+    h.view.commit()
+    assertTrue(h.view.hasPendingLoad)
+    h.view.release()
+    assertFalse(h.view.hasImage)
+    assertFalse(h.view.isCrossfading)
+    assertFalse(h.view.hasPendingLoad)
+  }
+
+  @Test
+  fun twoViewsSharingACachedImageDoNotShareADrawable() {
+    prefetch(a)
+    val first = harness()
+    val second = harness()
+    first.set(a)
+    second.set(a)
+    assertNotSame(first.view.currentDrawable, second.view.currentDrawable)
+  }
+}

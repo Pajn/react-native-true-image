@@ -3,7 +3,7 @@ buildscript {
     kotlinVersion: "2.0.21",
     minSdkVersion: 24,
     compileSdkVersion: 36,
-    glideVersion: "5.0.9"
+    glideVersion: "5.0.7"
   ]
 
   ext.getExtOrDefault = { prop ->
@@ -49,6 +49,12 @@ android {
     sourceCompatibility JavaVersion.VERSION_17
     targetCompatibility JavaVersion.VERSION_17
   }
+
+  testOptions {
+    unitTests {
+      includeAndroidResources = true
+    }
+  }
 }
 
 dependencies {
@@ -57,4 +63,5 @@ dependencies {
   implementation "com.github.bumptech.glide:okhttp3-integration:${getExtOrDefault('glideVersion')}"
 
   testImplementation "junit:junit:4.13.2"
+  testImplementation "org.robolectric:robolectric:4.17"
 }

@@ -68,6 +68,15 @@ class TrueImageView(context: Context) : View(context) {
 
   private val filter = PaintFlagsDrawFilter(0, Paint.FILTER_BITMAP_FLAG)
 
+  /** Tests observe events here instead of through the React event dispatcher. */
+  internal var eventSink: ((name: String, payload: Map<String, Any>) -> Unit)? = null
+
+  internal val hasImage: Boolean get() = current?.drawable != null
+  internal val isCrossfading: Boolean get() = crossfade != null
+  internal val hasPendingLoad: Boolean get() = pending != null
+  internal val hasBlurStandIn: Boolean get() = blurStandIn != null
+  internal val currentDrawable: Drawable? get() = current?.drawable
+
   init {
     setWillNotDraw(false)
   }
@@ -380,26 +389,21 @@ class TrueImageView(context: Context) : View(context) {
 
   // MARK: Events
 
-  private fun emitLoad(width: Int, height: Int, source: String) {
-    val payload = Arguments.createMap()
-    payload.putDouble("width", width.toDouble())
-    payload.putDouble("height", height.toDouble())
-    payload.putString("source", source)
-    emit("topLoad", payload)
-  }
+  private fun emitLoad(width: Int, height: Int, source: String) =
+    emit("topLoad", mapOf("width" to width.toDouble(), "height" to height.toDouble(), "source" to source))
 
-  private fun emitError(message: String, source: String) {
-    val payload = Arguments.createMap()
-    payload.putString("error", message)
-    payload.putString("source", source)
-    emit("topError", payload)
-  }
+  private fun emitError(message: String, source: String) =
+    emit("topError", mapOf("error" to message, "source" to source))
 
-  private fun emitDisplay() = emit("topDisplay", null)
+  private fun emitDisplay() = emit("topDisplay", emptyMap())
 
-  private fun emitDisplayEnd() = emit("topDisplayEnd", null)
+  private fun emitDisplayEnd() = emit("topDisplayEnd", emptyMap())
 
-  private fun emit(name: String, payload: WritableMap?) {
+  private fun emit(name: String, payload: Map<String, Any>) {
+    eventSink?.let {
+      it(name, payload)
+      return
+    }
     val reactContext = context as? ReactContext ?: return
     val dispatcher = UIManagerHelper.getEventDispatcherForReactTag(reactContext, id) ?: return
     dispatcher.dispatchEvent(TrueImageEvent(UIManagerHelper.getSurfaceId(this), id, name, payload))
@@ -411,10 +415,10 @@ class TrueImageView(context: Context) : View(context) {
     surfaceId: Int,
     viewTag: Int,
     private val name: String,
-    private val payload: WritableMap?,
+    private val payload: Map<String, Any>,
   ) : Event<TrueImageEvent>(surfaceId, viewTag) {
     override fun getEventName(): String = name
 
-    override fun getEventData(): WritableMap? = payload ?: Arguments.createMap()
+    override fun getEventData(): WritableMap = Arguments.makeNativeMap(payload)
   }
 }

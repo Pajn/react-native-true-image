@@ -20,7 +20,7 @@ import java.io.InputStream
  * key and the view's load becomes a synchronous memory hit.
  */
 object TrueImageRequests {
-  private var okHttpRegistered = false
+  private var registeredFor: Glide? = null
 
   fun glide(context: Context): RequestManager {
     val app = context.applicationContext
@@ -31,12 +31,14 @@ object TrueImageRequests {
   /**
    * Routes Glide through React Native's OkHttp client so app-level network
    * configuration (interceptors, TLS, cookies) applies to images too.
+   * Keyed on the Glide instance so a re-initialised Glide is set up again.
    */
   @Synchronized
   private fun registerOkHttp(context: Context) {
-    if (okHttpRegistered) return
-    okHttpRegistered = true
-    Glide.get(context).registry.replace(
+    val glide = Glide.get(context)
+    if (registeredFor === glide) return
+    registeredFor = glide
+    glide.registry.replace(
       GlideUrl::class.java,
       InputStream::class.java,
       OkHttpUrlLoader.Factory(OkHttpClientProvider.getOkHttpClient()),
