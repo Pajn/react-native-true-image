@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format follows [Conventional Commits](https://www.conventionalcommits.org/); entries are generated at release time.
 
 
+## [2.0.0](https://github.com/Pajn/react-native-true-image/compare/v1.1.2...v2.0.0) (2026-10-04)
+
+### ⚠ BREAKING CHANGES
+
+* Rendering now downsamples oversized images by default. Unsized prefetching no longer guarantees a synchronous memory hit for sized views; provide displaySize or set downsampleThreshold to 0 to retain the original-resolution contract.
+
+### Features
+
+* downsample images using display dimensions ([e68cb52](https://github.com/Pajn/react-native-true-image/commit/e68cb5243644af3dcd961e7354979cd6cade50e2))
+
+### Bug Fixes
+
+* **example:** adopt the iOS scene lifecycle ([089f13e](https://github.com/Pajn/react-native-true-image/commit/089f13e989eab84249725baee844cbd97765e901))
+
 ## [1.1.2](https://github.com/Pajn/react-native-true-image/compare/v1.1.1...v1.1.2) (2026-09-13)
 
 ### Bug Fixes
