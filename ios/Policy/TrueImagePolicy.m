@@ -116,3 +116,14 @@ NSURL *TrueImageURLFromSource(NSString *source)
   NSURLComponents *retry = [NSURLComponents componentsWithString:escaped];
   return retry.scheme.length > 0 ? retry.URL : nil;
 }
+
+CGSize TrueImageDecodePixelSize(CGSize original, CGSize display, TrueImageFitMode mode, CGFloat threshold)
+{
+  if (original.width <= 0 || original.height <= 0 || display.width <= 0 || display.height <= 0 ||
+      mode == TrueImageFitModeCenter || threshold <= 0) return CGSizeZero;
+  CGFloat sx = display.width / original.width;
+  CGFloat sy = display.height / original.height;
+  CGFloat scale = mode == TrueImageFitModeContain ? MIN(sx, sy) : MAX(sx, sy);
+  if (scale >= 1 / threshold) return CGSizeZero;
+  return CGSizeMake(MAX(1, ceil(original.width * scale)), MAX(1, ceil(original.height * scale)));
+}

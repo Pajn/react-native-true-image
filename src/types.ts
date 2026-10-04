@@ -14,8 +14,23 @@ export interface ImageURISource {
  */
 export type ImageSource = string | number | ImageURISource | null | undefined;
 
-/** What `Image.prefetch` accepts: the same shapes as `source`, minus assets. */
-export type PrefetchSource = string | ImageURISource;
+/** View dimensions in React Native layout units. */
+export interface DisplaySize {
+  width: number;
+  height: number;
+}
+
+export interface PrefetchOptions {
+  /** Expected view size in React Native layout units, before screen density. */
+  displaySize?: DisplaySize;
+  /** @default 'cover' */
+  resizeMode?: ResizeMode;
+  /** Same policy as Image.downsampleThreshold. @default 2 */
+  downsampleThreshold?: number;
+}
+
+/** What `Image.prefetch` accepts, with optional per-image decode settings. */
+export type PrefetchSource = string | (ImageURISource & PrefetchOptions);
 
 export type ResizeMode = 'cover' | 'contain' | 'stretch' | 'center';
 
@@ -43,6 +58,13 @@ export interface ImageErrorEvent {
 
 export interface ImageProps extends ViewProps {
   source?: ImageSource;
+  /**
+   * Decode oversized bitmaps near their displayed pixel size when the source
+   * resolution exceeds it by this linear factor. Defaults to 2. Set 1 to
+   * downsample whenever oversized, or 0 to disable. Other values must be >= 1.
+   * Does not downsample resizeMode="center" or native vector resources.
+   */
+  downsampleThreshold?: number;
   /** @default 'cover' */
   resizeMode?: ResizeMode;
   /**
@@ -111,3 +133,6 @@ export const DEFAULT_TRANSITION = 300;
  * blurred result.
  */
 export const DEFAULT_BLUR_PIXELS_PER_RADIUS = 2;
+
+/** Default linear oversize factor before decode-time downsampling. */
+export const DEFAULT_DOWNSAMPLE_THRESHOLD = 2;

@@ -31,6 +31,11 @@ FOUNDATION_EXPORT CGRect TrueImageFitRect(CGRect bounds, CGSize intrinsic, TrueI
 FOUNDATION_EXPORT BOOL TrueImageThumbnailPixelSize(
     CGSize imagePixels, CGSize drawnPoints, CGFloat scale, TrueImageFitMode mode, CGSize *outSize);
 
+/// Decode size in source pixel coordinates. CGSizeZero means keep original.
+/// Stretch conservatively retains enough pixels on both axes; center never shrinks.
+FOUNDATION_EXPORT CGSize TrueImageDecodePixelSize(
+    CGSize originalPixels, CGSize displayPixels, TrueImageFitMode mode, CGFloat threshold);
+
 /// Cache key for a resampled thumbnail. Varies with the source, the blur and
 /// the target size so a resize or a blur change never reuses a stale one.
 FOUNDATION_EXPORT NSString *TrueImageThumbnailKey(

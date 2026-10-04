@@ -189,6 +189,13 @@ describe('props', () => {
     expect(nativeProps().recyclingKey).toBe('row-1');
   });
 
+  it('defaults downsampleThreshold to 2 and supports opting out', async () => {
+    await render(<Image source="https://x/a.jpg" />);
+    expect(nativeProps().downsampleThreshold).toBe(2);
+    await render(<Image source="https://x/a.jpg" downsampleThreshold={0} />);
+    expect(nativeProps().downsampleThreshold).toBe(0);
+  });
+
   it('defaults resizeMode to cover and blurRadius to 0', async () => {
     await render(<Image source="https://x/a.jpg" />);
     expect(nativeProps().resizeMode).toBe('cover');
@@ -243,6 +250,50 @@ describe('props', () => {
 });
 
 describe('prefetch', () => {
+  it('supports batch sizing and per-source overrides', async () => {
+    await Image.prefetch(
+      [
+        'https://x/a.jpg',
+        {
+          uri: 'https://x/b.jpg',
+          displaySize: { width: 40, height: 60 },
+          downsampleThreshold: 1,
+          resizeMode: 'contain',
+        },
+      ],
+      { displaySize: { width: 100, height: 100 }, downsampleThreshold: 2 }
+    );
+    expect(mockPrefetch).toHaveBeenCalledWith([
+      expect.objectContaining({
+        uri: 'https://x/a.jpg',
+        displayWidth: 100,
+        displayHeight: 100,
+        downsampleThreshold: 2,
+      }),
+      expect.objectContaining({
+        uri: 'https://x/b.jpg',
+        displayWidth: 40,
+        displayHeight: 60,
+        downsampleThreshold: 1,
+        resizeMode: 'contain',
+      }),
+    ]);
+  });
+
+  it('rejects invalid sizes and thresholds before reaching native code', async () => {
+    await expect(
+      Image.prefetch('https://x/a.jpg', {
+        displaySize: { width: 0, height: 100 },
+      })
+    ).rejects.toThrow(RangeError);
+    for (const downsampleThreshold of [-1, 0.5, NaN, Infinity]) {
+      await expect(
+        Image.prefetch('https://x/a.jpg', { downsampleThreshold })
+      ).rejects.toThrow(RangeError);
+    }
+    expect(mockPrefetch).not.toHaveBeenCalled();
+  });
+
   it('wraps a single URL in a request list', async () => {
     await expect(Image.prefetch('https://x/a.jpg')).resolves.toBe(true);
     expect(mockPrefetch).toHaveBeenCalledWith([{ uri: 'https://x/a.jpg' }]);

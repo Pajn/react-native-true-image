@@ -158,3 +158,26 @@ final class LoaderPolicyTests: XCTestCase {
     XCTAssertNil(TrueImageURLFromSource("cover fallback"))
   }
 }
+
+final class DecodeSizeTests: XCTestCase {
+  func testThresholdAndOptOut() {
+    let target = CGSize(width: 100, height: 100)
+    XCTAssertEqual(TrueImageDecodePixelSize(CGSize(width: 200, height: 200), target, .cover, 2), .zero)
+    XCTAssertEqual(TrueImageDecodePixelSize(CGSize(width: 201, height: 201), target, .cover, 2), target)
+    XCTAssertEqual(TrueImageDecodePixelSize(CGSize(width: 200, height: 200), target, .cover, 1), target)
+    XCTAssertEqual(TrueImageDecodePixelSize(CGSize(width: 1000, height: 1000), target, .cover, 0), .zero)
+    XCTAssertEqual(TrueImageDecodePixelSize(CGSize(width: 1000, height: 1000), .zero, .cover, 2), .zero)
+  }
+
+  func testAspectRatioAndResizeModes() {
+    let original = CGSize(width: 1000, height: 500)
+    let target = CGSize(width: 100, height: 100)
+    XCTAssertEqual(TrueImageDecodePixelSize(original, target, .cover, 2), CGSize(width: 200, height: 100))
+    XCTAssertEqual(TrueImageDecodePixelSize(original, target, .contain, 2), CGSize(width: 100, height: 50))
+    XCTAssertEqual(TrueImageDecodePixelSize(original, target, .stretch, 2), CGSize(width: 200, height: 100))
+    XCTAssertEqual(TrueImageDecodePixelSize(original, target, .center, 2), .zero)
+    // Cover must retain the narrow axis; contain may reduce the entire image.
+    XCTAssertEqual(TrueImageDecodePixelSize(CGSize(width: 1000, height: 100), target, .cover, 2), .zero)
+    XCTAssertEqual(TrueImageDecodePixelSize(CGSize(width: 50, height: 50), target, .cover, 2), .zero)
+  }
+}

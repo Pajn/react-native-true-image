@@ -34,6 +34,7 @@ class TrueImageView(context: Context) : View(context) {
   /** Sent with remote requests. Not part of the cache key. */
   var headers: Map<String, String>? = null
   var fitMode: FitMode = FitMode.COVER
+  var downsampleThreshold: Float = 2f
   /** Fade duration in milliseconds. */
   var transitionMs: Int = 0
   /** In source-image pixels. */
@@ -52,7 +53,14 @@ class TrueImageView(context: Context) : View(context) {
 
   // MARK: State
 
-  private data class Request(val source: String)
+  private data class Request(val source: String, val size: TrueImageRequests.Size)
+
+  private fun request(source: String, reuse: Boolean = true): Request {
+    val size = TrueImageRequests.Size(width, height, fitMode, downsampleThreshold).let {
+      if (it.enabled) it else TrueImageRequests.Size()
+    }
+    return Request(source, if (reuse) TrueImageDecodeCache.compatible(source, size) else size)
+  }
 
   /**
    * One image and the Glide target that owns its bitmap. A blurred image
@@ -140,7 +148,13 @@ class TrueImageView(context: Context) : View(context) {
       clear()
       return
     }
-    val request = Request(src)
+    // Wait for layout rather than allocating a full-resolution bitmap first.
+    if (downsampleThreshold > 0f && fitMode != FitMode.CENTER && (width <= 0 || height <= 0) &&
+        TrueImageResources.vector(context, src) == null) {
+      cancelPending()
+      return
+    }
+    val request = request(src)
     current?.let {
       if (!it.isPlaceholder && it.request == request) {
         cancelPending()
@@ -166,6 +180,11 @@ class TrueImageView(context: Context) : View(context) {
     if (!isAttachedToWindow) releaseLayers()
   }
 
+  override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+    super.onSizeChanged(w, h, oldw, oldh)
+    if (!released && (w != oldw || h != oldh)) commit()
+  }
+
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
     if (released) releaseLayers()
@@ -183,12 +202,12 @@ class TrueImageView(context: Context) : View(context) {
     super.onAttachedToWindow()
     // A recycling key may have cleared this view while it was detached.
     val src = source
-    if (src != null && current == null && pending == null) load(Request(src))
+    if (src != null && current == null && pending == null) commit()
   }
 
   // MARK: Loading
 
-  private fun load(request: Request) {
+  private fun load(request: Request, memoryOnly: Boolean = request.size != request(request.source, reuse = false).size) {
     cancelPending()
 
     val vector = TrueImageResources.vector(context, request.source)
@@ -214,12 +233,20 @@ class TrueImageView(context: Context) : View(context) {
         // A stale target (superseded by a newer source) is silent.
         if (pending !== layer) return
         // Two views sharing one cached drawable must not share alpha.
+        TrueImageDecodeCache.record(request.source, request.size, resource)
         layer.drawable = resource.mutate()
         present(layer)
       }
 
       override fun onLoadFailed(errorDrawable: Drawable?) {
         if (pending !== layer) return
+        if (memoryOnly) {
+          // Glide forbids starting or clearing requests inside a target callback.
+          android.os.Handler(android.os.Looper.getMainLooper()).post {
+            if (pending === layer && !released) load(request(request.source, reuse = false), memoryOnly = false)
+          }
+          return
+        }
         pending = null
         emitError("Failed to load image", request.source)
       }
@@ -253,8 +280,9 @@ class TrueImageView(context: Context) : View(context) {
     }
 
     // A memory hit is delivered synchronously inside into().
-    TrueImageRequests.drawable(TrueImageRequests.glide(context), model)
-      .listener(listener)
+    val builder = TrueImageRequests.drawable(TrueImageRequests.glide(context), model, request.size)
+    if (memoryOnly) builder.onlyRetrieveFromCache(true).diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE)
+    builder.listener(listener)
       .into(target)
     // Only an empty view gets a placeholder; a displayed image stays up
     // until its replacement arrives.
@@ -274,7 +302,7 @@ class TrueImageView(context: Context) : View(context) {
       return
     }
     current?.let { if (it.isPlaceholder && it.request.source == src) return }
-    val request = Request(src)
+    val request = request(src)
 
     val vector = TrueImageResources.vector(context, src)
     if (vector != null) {
@@ -305,7 +333,7 @@ class TrueImageView(context: Context) : View(context) {
     layer.target = target
     pendingPlaceholder = layer
     val cacheOnly = !placeholderFromNetwork && Source.kindOf(src) == SourceKind.REMOTE
-    TrueImageRequests.drawable(TrueImageRequests.glide(context), model)
+    TrueImageRequests.drawable(TrueImageRequests.glide(context), model, request.size)
       .onlyRetrieveFromCache(cacheOnly)
       .into(target)
   }
@@ -356,8 +384,8 @@ class TrueImageView(context: Context) : View(context) {
       show(layer)
       return
     }
-    val factor = Blur.downscaleFactor(blurRadius, blurPixelsPerRadius)
-    val key = TrueImageBlur.key(layer.request.source, blurRadius, factor, tintOf(layer))
+    val factor = Blur.downscaleFactor(effectiveBlur(layer), blurPixelsPerRadius)
+    val key = TrueImageBlur.key(blurSource(layer), effectiveBlur(layer), factor, tintOf(layer))
     TrueImageBlur.cached(key)?.let {
       layer.blurred = BitmapDrawable(resources, it)
       layer.blurKey = key
@@ -365,7 +393,7 @@ class TrueImageView(context: Context) : View(context) {
       show(layer)
       return
     }
-    TrueImageBlur.make(drawable, blurRadius, factor, key) { bitmap ->
+    TrueImageBlur.make(drawable, effectiveBlur(layer), factor, key) { bitmap ->
       if (pending !== layer) return@make
       pending = null
       if (bitmap != null) {
@@ -384,15 +412,15 @@ class TrueImageView(context: Context) : View(context) {
       showPlaceholder(layer)
       return
     }
-    val factor = Blur.downscaleFactor(blurRadius, blurPixelsPerRadius)
-    val key = TrueImageBlur.key(layer.request.source, blurRadius, factor, tintOf(layer))
+    val factor = Blur.downscaleFactor(effectiveBlur(layer), blurPixelsPerRadius)
+    val key = TrueImageBlur.key(blurSource(layer), effectiveBlur(layer), factor, tintOf(layer))
     TrueImageBlur.cached(key)?.let {
       layer.blurred = BitmapDrawable(resources, it)
       layer.blurKey = key
       showPlaceholder(layer)
       return
     }
-    TrueImageBlur.make(drawable, blurRadius, factor, key) { bitmap ->
+    TrueImageBlur.make(drawable, effectiveBlur(layer), factor, key) { bitmap ->
       if (pendingPlaceholder !== layer) return@make
       if (bitmap != null) {
         layer.blurred = BitmapDrawable(resources, bitmap)
@@ -431,8 +459,8 @@ class TrueImageView(context: Context) : View(context) {
       invalidate()
       return
     }
-    val factor = Blur.downscaleFactor(blurRadius, blurPixelsPerRadius)
-    val key = TrueImageBlur.key(layer.request.source, blurRadius, factor, tintOf(layer))
+    val factor = Blur.downscaleFactor(effectiveBlur(layer), blurPixelsPerRadius)
+    val key = TrueImageBlur.key(blurSource(layer), effectiveBlur(layer), factor, tintOf(layer))
     if (key == layer.blurKey) return
     TrueImageBlur.cached(key)?.let {
       layer.blurred = BitmapDrawable(resources, it)
@@ -440,11 +468,11 @@ class TrueImageView(context: Context) : View(context) {
       invalidate()
       return
     }
-    TrueImageBlur.make(drawable, blurRadius, factor, key) { bitmap ->
+    TrueImageBlur.make(drawable, effectiveBlur(layer), factor, key) { bitmap ->
       // Stale if the image changed, or a later blur change already landed.
       if (current !== layer || bitmap == null) return@make
       val wanted = TrueImageBlur.key(
-        layer.request.source, blurRadius, Blur.downscaleFactor(blurRadius, blurPixelsPerRadius), tintOf(layer),
+        blurSource(layer), effectiveBlur(layer), Blur.downscaleFactor(effectiveBlur(layer), blurPixelsPerRadius), tintOf(layer),
       )
       if (wanted != key) return@make
       layer.blurred = BitmapDrawable(resources, bitmap)
@@ -501,6 +529,11 @@ class TrueImageView(context: Context) : View(context) {
       invalidate()
     }
   }
+
+  private fun blurSource(layer: Layer) = "${layer.request.source}:${layer.request.size}"
+
+  private fun effectiveBlur(layer: Layer): Float = blurRadius *
+    ((layer.drawable as? BitmapDrawable)?.bitmap?.let { TrueImageDownsample.sourceScale(it) } ?: 1f)
 
   /** Tints apply to native resources only, so only their blur keys carry one. */
   private fun tintOf(layer: Layer): Int? = if (layer.fromResource) tintColor else null

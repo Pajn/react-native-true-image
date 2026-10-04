@@ -4,7 +4,6 @@
 
 #import "TrueImageLoader.h"
 #import "TrueImageResources.h"
-#import "TrueImageThumbnails.h"
 
 static NSString *const kFadeKey = @"fade";
 
@@ -16,10 +15,14 @@ struct TrueImageRequest {
   NSString *source;
   CGFloat blurRadius;
   CGFloat blurDownscale;
+  CGSize pixelSize;
+  TrueImageFitMode fitMode;
+  CGFloat threshold;
 
   bool operator==(const TrueImageRequest &other) const
   {
-    return blurRadius == other.blurRadius && blurDownscale == other.blurDownscale &&
+    return CGSizeEqualToSize(pixelSize, other.pixelSize) && fitMode == other.fitMode && threshold == other.threshold &&
+        blurRadius == other.blurRadius && blurDownscale == other.blurDownscale &&
         [source isEqualToString:other.source];
   }
 };
@@ -66,7 +69,6 @@ enum class TrueImageKind { None, Bitmap, Resource };
 
   BOOL _hasReported;
   TrueImageRequest _reportedRequest;
-  NSString *_thumbnailKey;
   CGSize _rasterSize;
 
   NSString *_appliedRecyclingKey;
@@ -98,6 +100,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
     [self.layer addSublayer:_imageLayer];
     _fitMode = TrueImageFitModeCover;
     _appliedFitMode = TrueImageFitModeCover;
+    _downsampleThreshold = 2;
     _blurPixelsPerRadius = TrueImageDefaultBlurPixelsPerRadius;
     _loadedKind = TrueImageKind::None;
     [self applyGravity];
@@ -116,6 +119,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   [super layoutSubviews];
   _imageLayer.frame = self.bounds;
   _imageLayer.contentsScale = [self displayScale];
+  if (_source.length > 0 && !_clearOnMove) [self commit];
   switch (_loadedKind) {
     case TrueImageKind::None:
       if (_placeholderShown && _placeholderIsResource) {
@@ -128,7 +132,6 @@ enum class TrueImageKind { None, Bitmap, Resource };
       }
       break;
     case TrueImageKind::Bitmap:
-      [self refineContents:_loadedImage request:_loadedRequest];
       break;
   }
 }
@@ -177,8 +180,6 @@ enum class TrueImageKind { None, Bitmap, Resource };
         break;
       case TrueImageKind::Bitmap:
         [self applyGravity];
-        _thumbnailKey = nil;
-        [self refineContents:_loadedImage request:_loadedRequest];
         break;
       case TrueImageKind::None:
         [self applyGravity];
@@ -198,8 +199,12 @@ enum class TrueImageKind { None, Bitmap, Resource };
     [self clear];
     return;
   }
-  TrueImageRequest request{
-      _source, _blurRadius, TrueImageBlurDownscaleFactor(_blurRadius, _blurPixelsPerRadius)};
+  if (_downsampleThreshold > 0 && _fitMode != TrueImageFitModeCenter && TrueImageURLFromSource(_source) &&
+      (self.bounds.size.width <= 0 || self.bounds.size.height <= 0)) {
+    [self cancelPending];
+    return;
+  }
+  TrueImageRequest request = [self requestForSource:_source];
   if (_loadedKind != TrueImageKind::None && _loadedRequest == request) {
     [self cancelPending];
     return;
@@ -230,6 +235,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   _recyclingKey = nil;
   _appliedRecyclingKey = nil;
   _transition = 0;
+  _downsampleThreshold = 2;
   _blurRadius = 0;
   _blurPixelsPerRadius = TrueImageDefaultBlurPixelsPerRadius;
   _tint = nil;
@@ -246,6 +252,19 @@ enum class TrueImageKind { None, Bitmap, Resource };
   _onDisplay = nil;
   _onDisplayEnd = nil;
   [self applyGravity];
+}
+
+- (TrueImageRequest)requestForSource:(NSString *)source
+{
+  BOOL sized = _downsampleThreshold > 0 && _fitMode != TrueImageFitModeCenter && TrueImageURLFromSource(source);
+  CGSize pixels = sized ? CGSizeMake(round(self.bounds.size.width * [self displayScale]),
+                                     round(self.bounds.size.height * [self displayScale])) : CGSizeZero;
+  CGFloat blurDownscale = TrueImageBlurDownscaleFactor(_blurRadius, _blurPixelsPerRadius);
+  if (sized) pixels = [TrueImageLoader compatiblePixelSizeForURL:TrueImageURLFromSource(source) pixelSize:pixels
+                                                     fitMode:_fitMode downsampleThreshold:_downsampleThreshold
+                                                  blurRadius:_blurRadius blurDownscale:blurDownscale];
+  return {source, _blurRadius, blurDownscale,
+          pixels, sized ? _fitMode : TrueImageFitModeCover, sized ? _downsampleThreshold : 0};
 }
 
 #pragma mark - Loading
@@ -268,6 +287,9 @@ enum class TrueImageKind { None, Bitmap, Resource };
                         blurDownscale:request.blurDownscale
                               headers:_headers
                             cacheOnly:NO
+                            pixelSize:request.pixelSize
+                              fitMode:request.fitMode
+                  downsampleThreshold:request.threshold
                            completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
                              __typeof(self) self = weakSelf;
                              // A load superseded by a newer source is silent: no onError, no image.
@@ -310,8 +332,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
     }
     return;
   }
-  TrueImageRequest request{
-      _placeholder, _blurRadius, TrueImageBlurDownscaleFactor(_blurRadius, _blurPixelsPerRadius)};
+  TrueImageRequest request = [self requestForSource:_placeholder];
   if (_placeholderShown && _placeholderRequest == request) {
     return;
   }
@@ -332,6 +353,9 @@ enum class TrueImageKind { None, Bitmap, Resource };
                                  blurDownscale:request.blurDownscale
                                        headers:_placeholderHeaders
                                      cacheOnly:remote && !_placeholderFromNetwork
+                                     pixelSize:request.pixelSize
+                                       fitMode:request.fitMode
+                           downsampleThreshold:request.threshold
                                     completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
                                       __typeof(self) self = weakSelf;
                                       // Stale once the image arrived or the source moved on.
@@ -402,7 +426,6 @@ enum class TrueImageKind { None, Bitmap, Resource };
   _loadedKind = TrueImageKind::Resource;
   _loadedRequest = request;
   _loadedImage = image;
-  _thumbnailKey = nil;
   _rasterSize = CGSizeZero;
   [self rasterize:image request:request];
 }
@@ -430,7 +453,6 @@ enum class TrueImageKind { None, Bitmap, Resource };
   _loadedKind = TrueImageKind::None;
   _loadedImage = nil;
   _hasReported = NO;
-  _thumbnailKey = nil;
   _rasterSize = CGSizeZero;
 }
 
@@ -450,7 +472,6 @@ enum class TrueImageKind { None, Bitmap, Resource };
   _loadedImage = image;
   _hasReported = YES;
   _reportedRequest = request;
-  _thumbnailKey = nil;
   id contents = (__bridge id)image.CGImage;
   [self applyGravity];
 
@@ -474,7 +495,6 @@ enum class TrueImageKind { None, Bitmap, Resource };
       _onDisplayEnd();
     }
   }
-  [self refineContents:image request:request];
 }
 
 /// Removes a running fade. Its delegate sees `finished == NO` and stays
@@ -547,37 +567,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   }
 }
 
-/// Swaps in a thumbnail resampled to the drawn size when the image is far
-/// larger than the view. Never fades; skips when the key is unchanged.
-- (void)refineContents:(UIImage *)image request:(TrueImageRequest)request
-{
-  CGSize pixels = CGSizeMake(image.size.width * image.scale, image.size.height * image.scale);
-  CGSize size;
-  if (!TrueImageThumbnailPixelSize(pixels, self.bounds.size, [self displayScale], _fitMode, &size)) {
-    return;
-  }
-  NSString *key = TrueImageThumbnailKey(request.source, request.blurRadius, request.blurDownscale, size);
-  if ([key isEqualToString:_thumbnailKey]) {
-    return;
-  }
-  _thumbnailKey = key;
-  __weak __typeof(self) weakSelf = self;
-  [TrueImageThumbnails.shared makeFromImage:image
-                                  pixelSize:size
-                                        key:key
-                                 completion:^(CGImageRef thumb) {
-                                   __typeof(self) self = weakSelf;
-                                   if (!self || !thumb || ![self->_thumbnailKey isEqualToString:key] ||
-                                       self->_loadedKind == TrueImageKind::None ||
-                                       !(self->_loadedRequest == request)) {
-                                     return;
-                                   }
-                                   self->_imageLayer.contents = (__bridge id)thumb;
-                                 }];
-}
-
-/// Catalog images are rasterised at the view's size so vector assets stay
-/// sharp on resize and tints resolve against the current traits.
+/// Catalog images rasterise at the view size so vectors remain sharp on resize.
 - (void)rasterize:(UIImage *)image request:(TrueImageRequest)request
 {
   CGSize pixelSize = CGSizeZero;

@@ -39,6 +39,8 @@ import org.robolectric.Shadows.shadowOf
 abstract class GlideTestCase {
   lateinit var app: Application
   lateinit var network: FakeNetwork
+  protected open val useDiskCache = false
+  private var diskDirectory: java.io.File? = null
 
   @Before
   fun setUpGlide() {
@@ -49,7 +51,13 @@ abstract class GlideTestCase {
         .setSourceExecutor(GlideExecutor.newSourceBuilder().setThreadCount(1).build())
         .setDiskCacheExecutor(GlideExecutor.newDiskCacheBuilder().setThreadCount(1).build())
         // No disk tier: a hit is a memory hit or nothing.
-        .setDiskCache(DiskCache.Factory { null }),
+        .setDiskCache(DiskCache.Factory {
+          if (useDiskCache) {
+            val directory = java.nio.file.Files.createTempDirectory("true-image-test").toFile()
+            diskDirectory = directory
+            com.bumptech.glide.load.engine.cache.DiskLruCacheWrapper.create(directory, 10 * 1024 * 1024L)
+          } else null
+        }),
     )
     // Registers the OkHttp loader on this instance; the fake then replaces it.
     TrueImageRequests.glide(app)
@@ -61,6 +69,7 @@ abstract class GlideTestCase {
   @After
   fun tearDownGlide() {
     Glide.tearDown()
+    diskDirectory?.deleteRecursively()
   }
 
   /**

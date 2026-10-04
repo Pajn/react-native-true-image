@@ -43,7 +43,7 @@ class TrueImageViewTest : GlideTestCase() {
     fun draw() = view.draw(Canvas())
   }
 
-  private fun harness() = Harness(TrueImageView(app))
+  private fun harness() = Harness(TrueImageView(app).apply { downsampleThreshold = 0f })
 
   private fun advance(ms: Long) = ShadowSystemClock.advanceBy(Duration.ofMillis(ms))
 

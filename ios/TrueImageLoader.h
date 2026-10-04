@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import "TrueImagePolicy.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -7,12 +8,15 @@ typedef void (^TrueImageLoadCompletion)(UIImage *_Nullable image, BOOL fromMemor
 /// One URL to warm the cache with, plus the headers to send for it.
 @interface TrueImagePrefetchRequest : NSObject
 @property (nonatomic, strong) NSURL *url;
+@property (nonatomic) CGSize pixelSize;
+@property (nonatomic) TrueImageFitMode fitMode;
+@property (nonatomic) CGFloat downsampleThreshold;
 @property (nonatomic, copy, nullable) NSDictionary<NSString *, NSString *> *headers;
 + (instancetype)requestWithURL:(NSURL *)url headers:(nullable NSDictionary<NSString *, NSString *> *)headers;
 @end
 
 /// The single place that knows how an image request is built, so that a
-/// prefetch and a view mounting later produce the identical cache key and
+/// matching prefetch and view requests produce an identical cache key and
 /// the view's load becomes a synchronous memory hit.
 @interface TrueImageLoader : NSObject
 
@@ -31,6 +35,21 @@ typedef void (^TrueImageLoadCompletion)(UIImage *_Nullable image, BOOL fromMemor
                headers:(nullable NSDictionary<NSString *, NSString *> *)headers
              cacheOnly:(BOOL)cacheOnly
             completion:(TrueImageLoadCompletion)completion;
+
+/// Sized overload used by the view and sized prefetches.
++ (nullable id)loadURL:(NSURL *)url
+            blurRadius:(CGFloat)blurRadius
+         blurDownscale:(CGFloat)blurDownscale
+               headers:(nullable NSDictionary<NSString *, NSString *> *)headers
+             cacheOnly:(BOOL)cacheOnly
+             pixelSize:(CGSize)pixelSize
+               fitMode:(TrueImageFitMode)fitMode
+   downsampleThreshold:(CGFloat)threshold
+            completion:(TrueImageLoadCompletion)completion;
+
+/// Reuses a memory-cached variant with adequate resolution and within the threshold.
++ (CGSize)compatiblePixelSizeForURL:(NSURL *)url pixelSize:(CGSize)pixelSize fitMode:(TrueImageFitMode)fitMode
+              downsampleThreshold:(CGFloat)threshold blurRadius:(CGFloat)radius blurDownscale:(CGFloat)downscale;
 
 + (void)cancel:(nullable id)token;
 

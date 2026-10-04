@@ -10,6 +10,8 @@
 {
   if (self = [super init]) {
     _view = [[TrueImageView alloc] initWithFrame:frame];
+    // Existing lifecycle tests exercise the original-resolution opt-out.
+    _view.downsampleThreshold = 0;
     _events = [NSMutableArray new];
     _payloads = [NSMutableArray new];
     __weak __typeof(self) weakSelf = self;
@@ -141,7 +143,9 @@
     [dictionary[@"headers"] enumerateKeysAndObjectsUsingBlock:^(NSString *name, NSString *value, BOOL *stop) {
       [headers addObject:@{@"name" : name, @"value" : value}];
     }];
-    [requests addObject:@{@"uri" : dictionary[@"uri"], @"headers" : headers}];
+    NSMutableDictionary *request = [dictionary mutableCopy];
+    request[@"headers"] = headers;
+    [requests addObject:request];
   }
   __block NSNumber *result;
   TrueImageModule *module = [TrueImageModule new];

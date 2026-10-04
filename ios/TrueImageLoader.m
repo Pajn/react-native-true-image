@@ -3,6 +3,7 @@
 #import <SDWebImage/SDWebImage.h>
 
 #import "TrueImageBlurTransformer.h"
+#import "TrueImageDownsample.h"
 #import "TrueImagePolicy.h"
 #import "TrueImageWebPCoder.h"
 
@@ -24,9 +25,11 @@ static SDWebImageContext *BaseContext(void)
 }
 
 static SDWebImageContext *ContextFor(
-    CGFloat blurRadius, CGFloat blurDownscale, NSDictionary<NSString *, NSString *> *headers)
+    CGFloat blurRadius, CGFloat blurDownscale, NSDictionary<NSString *, NSString *> *headers,
+    CGSize pixelSize, TrueImageFitMode fitMode, CGFloat threshold)
 {
-  if (blurRadius <= 0 && headers.count == 0) {
+  BOOL sized = pixelSize.width > 0 && pixelSize.height > 0 && threshold > 0 && fitMode != TrueImageFitModeCenter;
+  if (!sized && blurRadius <= 0 && headers.count == 0) {
     return BaseContext();
   }
   NSMutableDictionary *context = [BaseContext() mutableCopy];
@@ -35,6 +38,30 @@ static SDWebImageContext *ContextFor(
     // and is reused as the transform input.
     context[SDWebImageContextImageTransformer] =
         [TrueImageBlurTransformer transformerWithRadius:blurRadius downscale:blurDownscale];
+  }
+  if (sized) {
+    TrueImageDownsample *policy = [TrueImageDownsample new];
+    policy.pixelSize = pixelSize;
+    policy.fitMode = fitMode;
+    policy.threshold = threshold;
+    policy.blurRadius = blurRadius;
+    policy.blurDownscale = blurDownscale;
+    context[SDWebImageContextImageCoder] = policy;
+    context[SDWebImageContextImageTransformer] = policy;
+    context[SDWebImageContextImageThumbnailPixelSize] = [NSValue valueWithCGSize:pixelSize];
+    // Read the same original disk data without putting a reduced bitmap in
+    // the URL-only memory entry (SDWebImage otherwise writes it back there).
+    static SDImageCache *originalCache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      SDImageCache *shared = SDImageCache.sharedImageCache;
+      SDImageCacheConfig *config = [shared.config copy];
+      config.shouldCacheImagesInMemory = NO;
+      originalCache = [[SDImageCache alloc] initWithNamespace:shared.diskCachePath.lastPathComponent
+                                         diskCacheDirectory:shared.diskCachePath.stringByDeletingLastPathComponent
+                                                     config:config];
+    });
+    context[SDWebImageContextOriginalImageCache] = originalCache;
   }
   if (headers.count > 0) {
     // A request modifier is not part of the cache key: the same URL is one
@@ -50,6 +77,7 @@ static SDWebImageContext *ContextFor(
 {
   TrueImagePrefetchRequest *request = [TrueImagePrefetchRequest new];
   request.url = url;
+  request.downsampleThreshold = 2;
   request.headers = headers;
   return request;
 }
@@ -71,6 +99,35 @@ static SDWebImageManager *Manager(void)
   return gManager;
 }
 
+// A bounded index of cache keys and geometry; SDWebImage retains the images.
+static NSCache<NSString *, NSArray<NSDictionary *> *> *VariantIndex(void)
+{
+  static NSCache *index;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{ index = [NSCache new]; index.countLimit = 256; });
+  return index;
+}
+
+static void RecordVariant(NSURL *url, SDWebImageContext *context, UIImage *image)
+{
+  TrueImageDownsample *policy = context[SDWebImageContextImageCoder];
+  if (![policy isKindOfClass:TrueImageDownsample.class] || !image || policy.decodedPixels.width <= 0) return;
+  NSString *key = [Manager() cacheKeyForURL:url context:context];
+  NSDictionary *entry = @{@"key": key, @"policy": policy.transformerKey,
+    @"size": [NSValue valueWithCGSize:policy.pixelSize], @"decoded": [NSValue valueWithCGSize:policy.decodedPixels],
+    @"original": @(MAX(policy.decodedPixels.width, policy.decodedPixels.height) >=
+                   MAX(policy.originalPixels.width, policy.originalPixels.height))};
+  @synchronized (VariantIndex()) {
+    NSMutableArray *entries = [[VariantIndex() objectForKey:url.absoluteString] mutableCopy] ?: [NSMutableArray new];
+    NSIndexSet *old = [entries indexesOfObjectsPassingTest:^BOOL(NSDictionary *item, NSUInteger idx, BOOL *stop) {
+      return [item[@"key"] isEqual:key];
+    }];
+    [entries removeObjectsAtIndexes:old];
+    [entries addObject:entry];
+    if (entries.count > 8) [entries removeObjectAtIndex:0];
+    [VariantIndex() setObject:entries forKey:url.absoluteString];
+  }
+}
 
 @implementation TrueImageLoader
 
@@ -92,17 +149,54 @@ static SDWebImageManager *Manager(void)
       cacheOnly:(BOOL)cacheOnly
      completion:(TrueImageLoadCompletion)completion
 {
+  return [self loadURL:url blurRadius:blurRadius blurDownscale:blurDownscale headers:headers cacheOnly:cacheOnly
+             pixelSize:CGSizeZero fitMode:TrueImageFitModeCover downsampleThreshold:0 completion:completion];
+}
+
++ (id)loadURL:(NSURL *)url
+     blurRadius:(CGFloat)blurRadius
+  blurDownscale:(CGFloat)blurDownscale
+        headers:(NSDictionary<NSString *, NSString *> *)headers
+      cacheOnly:(BOOL)cacheOnly
+      pixelSize:(CGSize)pixelSize
+        fitMode:(TrueImageFitMode)fitMode
+ downsampleThreshold:(CGFloat)threshold
+     completion:(TrueImageLoadCompletion)completion
+{
+  SDWebImageContext *context = ContextFor(blurRadius, blurDownscale, headers, pixelSize, fitMode, threshold);
   return [Manager()
        loadImageWithURL:url
                 options:cacheOnly ? (kOptions | SDWebImageFromCacheOnly) : kOptions
-                context:ContextFor(blurRadius, blurDownscale, headers)
+                context:context
                progress:nil
               completed:^(UIImage *image, NSData *data, NSError *error, SDImageCacheType cacheType, BOOL finished, NSURL *imageURL) {
                 if (!finished) {
                   return;
                 }
+                RecordVariant(url, context, image);
                 completion(image, cacheType == SDImageCacheTypeMemory, error.localizedDescription);
               }];
+}
+
++ (CGSize)compatiblePixelSizeForURL:(NSURL *)url pixelSize:(CGSize)pixelSize fitMode:(TrueImageFitMode)fitMode
+              downsampleThreshold:(CGFloat)threshold blurRadius:(CGFloat)radius blurDownscale:(CGFloat)downscale
+{
+  if (pixelSize.width <= 0 || pixelSize.height <= 0 || threshold <= 0 || fitMode == TrueImageFitModeCenter) return pixelSize;
+  TrueImageDownsample *policy = [TrueImageDownsample new];
+  policy.fitMode = fitMode; policy.threshold = threshold; policy.blurRadius = radius; policy.blurDownscale = downscale;
+  NSArray *entries;
+  @synchronized (VariantIndex()) { entries = [VariantIndex() objectForKey:url.absoluteString]; }
+  for (NSDictionary *entry in entries.reverseObjectEnumerator) {
+    if (![entry[@"policy"] isEqual:policy.transformerKey]) continue;
+    CGSize decoded = [entry[@"decoded"] CGSizeValue];
+    CGFloat sx = pixelSize.width / decoded.width, sy = pixelSize.height / decoded.height;
+    CGFloat scale = fitMode == TrueImageFitModeContain ? MIN(sx, sy) : MAX(sx, sy);
+    if ((scale <= 1 || [entry[@"original"] boolValue]) && scale >= 1 / threshold &&
+        [SDImageCache.sharedImageCache imageFromMemoryCacheForKey:entry[@"key"]]) {
+      return [entry[@"size"] CGSizeValue];
+    }
+  }
+  return pixelSize;
 }
 
 + (void)cancel:(id)token
@@ -131,21 +225,12 @@ static SDWebImageManager *Manager(void)
   __block NSUInteger finishedCount = 0;
   __block BOOL ok = YES;
   for (TrueImagePrefetchRequest *request in requests) {
-    [Manager() loadImageWithURL:request.url
-                        options:kOptions
-                        context:ContextFor(0, 1, request.headers)
-                       progress:nil
-                      completed:^(UIImage *image, NSData *data, NSError *error, SDImageCacheType cacheType, BOOL finished, NSURL *imageURL) {
-                        if (!finished) {
-                          return;
-                        }
-                        if (!image) {
-                          ok = NO;
-                        }
-                        if (++finishedCount == total) {
-                          completion(ok);
-                        }
-                      }];
+    [self loadURL:request.url blurRadius:0 blurDownscale:1 headers:request.headers cacheOnly:NO
+         pixelSize:request.pixelSize fitMode:request.fitMode downsampleThreshold:request.downsampleThreshold
+        completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
+          if (!image) ok = NO;
+          if (++finishedCount == total) completion(ok);
+        }];
   }
 }
 

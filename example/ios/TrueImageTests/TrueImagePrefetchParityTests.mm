@@ -147,4 +147,80 @@
   XCTAssertEqual(image.size.height, 1);
 }
 
+
+- (void)testSizedPrefetchDownsamplesAndMatchesViewSynchronously
+{
+  self.network.defaultData = [TrueImageTestCase pngWithSize:CGSizeMake(1200, 600) color:UIColor.redColor];
+  XCTAssertTrue(([self prefetch:@[@{@"uri": _url, @"displayWidth": @40, @"displayHeight": @40}]]));
+  TrueImageHarness *h = [self harness];
+  h.view.downsampleThreshold = 2;
+  [h setSource:_url transition:300 recyclingKey:nil];
+  XCTAssertEqualObjects(h.events, (@[@"load", @"display", @"displayEnd"]));
+  CGFloat scale = h.view.traitCollection.displayScale;
+  XCTAssertEqualWithAccuracy([h.payloads.firstObject[@"width"] doubleValue], 80 * scale, 1);
+  XCTAssertEqualWithAccuracy([h.payloads.firstObject[@"height"] doubleValue], 40 * scale, 1);
+  XCTAssertFalse(h.isFading);
+  XCTAssertEqual([self.network fetchCount:_url], 1u);
+
+  // A larger view must not inherit the reduced variant; raw data is shared.
+  h.view.frame = CGRectMake(0, 0, 400, 400);
+  [h.view setNeedsLayout];
+  [h.view layoutIfNeeded];
+  XCTAssertTrue([self waitFor:^{ return [h.payloads.lastObject[@"width"] doubleValue] == 1200; }]);
+  XCTAssertEqual([self.network fetchCount:_url], 1u);
+}
+
+- (void)testDefaultSizingWaitsForLayoutAndOptOutKeepsOriginal
+{
+  self.network.defaultData = [TrueImageTestCase pngWithSize:CGSizeMake(1200, 1200) color:UIColor.redColor];
+  TrueImageHarness *h = [self harnessWithFrame:CGRectZero];
+  h.view.downsampleThreshold = 2;
+  [h setSource:_url transition:0 recyclingKey:nil];
+  [self spin:0.05];
+  XCTAssertEqual([self.network fetchCount:_url], 0u);
+  h.view.frame = CGRectMake(0, 0, 40, 40);
+  [h.view setNeedsLayout];
+  [h.view layoutIfNeeded];
+  XCTAssertTrue([self waitFor:^{ return h.events.count >= 3; }]);
+  XCTAssertLessThan([h.payloads.lastObject[@"width"] doubleValue], 1200);
+  h.view.downsampleThreshold = 0;
+  [h.view commit];
+  XCTAssertTrue([self waitFor:^{ return [h.payloads.lastObject[@"width"] doubleValue] == 1200; }]);
+}
+
+
+- (void)testRoughPrefetchDimensionsReuseAdequateVariant
+{
+  self.network.defaultData = [TrueImageTestCase pngWithSize:CGSizeMake(1200, 1200) color:UIColor.redColor];
+  XCTAssertTrue(([self prefetch:@[@{@"uri": _url, @"displayWidth": @50, @"displayHeight": @50}]]));
+  TrueImageHarness *h = [self harness]; // 40pt view uses the 50pt decode.
+  h.view.downsampleThreshold = 2;
+  [h setSource:_url transition:300 recyclingKey:nil];
+  XCTAssertEqualObjects(h.events, (@[@"load", @"display", @"displayEnd"]));
+  CGFloat pixels = 50 * h.view.traitCollection.displayScale;
+  XCTAssertEqualWithAccuracy([h.payloads.firstObject[@"width"] doubleValue], pixels, 1);
+  h.view.frame = CGRectMake(0, 0, 20, 20); // 50/20 > 2, so decode a smaller variant.
+  [h.view setNeedsLayout]; [h.view layoutIfNeeded];
+  XCTAssertTrue([self waitFor:^{ return [h.payloads.lastObject[@"width"] doubleValue] < pixels; }]);
+  XCTAssertEqual([self.network fetchCount:_url], 1u);
+}
+
+
+- (void)testRoughEstimateReusesOriginalUntilThresholdIsExceeded
+{
+  CGFloat scale = UIScreen.mainScreen.scale;
+  CGFloat originalPixels = 80 * scale;
+  self.network.defaultData = [TrueImageTestCase pngWithSize:CGSizeMake(originalPixels, originalPixels) color:UIColor.redColor];
+  XCTAssertTrue(([self prefetch:@[@{@"uri": _url, @"displayWidth": @50, @"displayHeight": @50}]]));
+  TrueImageHarness *h = [self harness];
+  h.view.downsampleThreshold = 2;
+  [h setSource:_url transition:300 recyclingKey:nil];
+  XCTAssertEqualObjects(h.events, (@[@"load", @"display", @"displayEnd"]));
+  XCTAssertEqual([h.payloads.firstObject[@"width"] doubleValue], originalPixels);
+  h.view.frame = CGRectMake(0, 0, 30, 30);
+  [h.view setNeedsLayout]; [h.view layoutIfNeeded];
+  XCTAssertTrue([self waitFor:^{ return [h.payloads.lastObject[@"width"] doubleValue] < originalPixels; }]);
+  XCTAssertEqual([self.network fetchCount:_url], 1u);
+}
+
 @end

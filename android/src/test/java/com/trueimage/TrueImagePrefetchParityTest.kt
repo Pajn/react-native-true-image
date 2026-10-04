@@ -19,7 +19,7 @@ class TrueImagePrefetchParityTest : GlideTestCase() {
 
   private fun view(): Pair<TrueImageView, MutableList<String>> {
     val events = mutableListOf<String>()
-    val view = TrueImageView(app)
+    val view = TrueImageView(app).apply { downsampleThreshold = 0f }
     view.eventSink = { name, _ -> events += name }
     return view to events
   }

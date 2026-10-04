@@ -8,6 +8,7 @@ import com.bumptech.glide.RequestBuilder
 import com.bumptech.glide.RequestManager
 import com.bumptech.glide.integration.okhttp3.OkHttpUrlLoader
 import com.bumptech.glide.load.DecodeFormat
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.load.model.Headers
 import com.bumptech.glide.load.model.LazyHeaders
@@ -18,8 +19,7 @@ import java.io.InputStream
 
 /**
  * A remote URL plus the headers sent with it. Identity is the URL alone, so
- * the memory cache is keyed like the disk cache and like iOS: a prefetch and
- * a view that agree on the URL share one entry whatever headers each sent.
+ * decoded variants share source data and ignore headers in their cache keys.
  */
 class TrueImageUrl(url: String, headers: Headers) : GlideUrl(url, headers) {
   override fun equals(other: Any?): Boolean = other is GlideUrl && other.cacheKey == cacheKey
@@ -29,8 +29,8 @@ class TrueImageUrl(url: String, headers: Headers) : GlideUrl(url, headers) {
 
 /**
  * The single place that knows how an image request is built, so that
- * `prefetch(urls)` and a view mounting later produce the identical cache
- * key and the view's load becomes a synchronous memory hit.
+ * matching prefetch and view dimensions/settings produce identical decoded
+ * cache keys and a synchronous memory hit.
  */
 object TrueImageRequests {
   private var registeredFor: Glide? = null
@@ -72,17 +72,22 @@ object TrueImageRequests {
     return TrueImageUrl(url, builder.build())
   }
 
-  /**
-   * Decodes at the image's own size. Keeping view size out of the key is what
-   * makes a prefetch and a later view load share one cache entry; image URLs
-   * are expected to ask the CDN for the size they need.
-   */
-  fun drawable(glide: RequestManager, model: Any): RequestBuilder<Drawable> =
-    glide.asDrawable()
-      .load(model)
-      .override(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL)
-      .downsample(DownsampleStrategy.NONE)
+  /** Zero dimensions or threshold disable sizing, retaining the original request key. */
+  data class Size(val width: Int = 0, val height: Int = 0, val mode: FitMode = FitMode.COVER, val threshold: Float = 2f) {
+    val enabled: Boolean get() = width > 0 && height > 0 && threshold > 0f && mode != FitMode.CENTER
+  }
+
+  fun drawable(glide: RequestManager, model: Any, size: Size = Size()): RequestBuilder<Drawable> {
+    val request = glide.asDrawable().load(model)
       .format(DecodeFormat.PREFER_ARGB_8888)
-      .dontTransform()
+      .diskCacheStrategy(DiskCacheStrategy.DATA)
       .dontAnimate()
+    if (!size.enabled) {
+      return request.override(Target.SIZE_ORIGINAL, Target.SIZE_ORIGINAL)
+        .downsample(DownsampleStrategy.NONE).dontTransform()
+    }
+    val strategy = TrueImageDownsample(size.mode, size.threshold)
+    return request.override(size.width, size.height).downsample(strategy)
+      .transform(TrueImageDownsample.Metadata(strategy))
+  }
 }

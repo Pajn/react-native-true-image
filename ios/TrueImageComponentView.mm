@@ -102,6 +102,7 @@ static TrueImageFitMode TrueImageFitModeFromProp(TrueImageViewResizeMode mode)
     _view.headers = headers;
   }
   _view.fitMode = TrueImageFitModeFromProp(newProps.resizeMode);
+  _view.downsampleThreshold = newProps.downsampleThreshold;
   _view.transition = newProps.transition;
   _view.blurRadius = newProps.blurRadius;
   _view.blurPixelsPerRadius = newProps.blurPixelsPerRadius;

@@ -5,6 +5,8 @@ import TrueImageView from './specs/TrueImageViewNativeComponent';
 import {
   DEFAULT_BLUR_PIXELS_PER_RADIUS,
   DEFAULT_TRANSITION,
+  DEFAULT_DOWNSAMPLE_THRESHOLD,
+  type PrefetchOptions,
   type ImageErrorEvent,
   type ImageLoadEvent,
   type ImageProps,
@@ -72,6 +74,7 @@ function ImageComponent({
   source,
   transition,
   resizeMode = 'cover',
+  downsampleThreshold = DEFAULT_DOWNSAMPLE_THRESHOLD,
   blurRadius = 0,
   blurPixelsPerRadius = DEFAULT_BLUR_PIXELS_PER_RADIUS,
   placeholder,
@@ -85,6 +88,7 @@ function ImageComponent({
   ref,
   ...rest
 }: ImageProps & { ref?: Ref<ImageRef> }) {
+  validateThreshold(downsampleThreshold);
   const latest = useLatest({ onLoad, onError, onDisplay, onDisplayEnd });
   const resolved = resolveSource(source);
   const resolvedPlaceholder = resolveSource(placeholder);
@@ -124,6 +128,7 @@ function ImageComponent({
       headers={resolved.headers}
       transition={resolvedTransition}
       resizeMode={resizeMode}
+      downsampleThreshold={downsampleThreshold}
       blurRadius={blurRadius}
       blurPixelsPerRadius={blurPixelsPerRadius}
       placeholder={resolvedPlaceholder.uri}
@@ -136,23 +141,50 @@ function ImageComponent({
   );
 }
 
-/**
- * Warms the memory cache with the exact request a mounting `Image` will
- * make, so the view's load is a synchronous memory hit. Resolves `false`
- * if any URL failed.
- */
-function prefetch(
-  sources: PrefetchSource | readonly PrefetchSource[]
+function validateThreshold(value: number) {
+  if (!Number.isFinite(value) || (value !== 0 && value < 1)) {
+    throw new RangeError(
+      'downsampleThreshold must be 0 or a finite number >= 1'
+    );
+  }
+}
+
+/** Warms the decoded cache; matching view dimensions and options share a hit. */
+async function prefetch(
+  sources: PrefetchSource | readonly PrefetchSource[],
+  options: PrefetchOptions = {}
 ): Promise<boolean> {
   const list = Array.isArray(sources)
     ? (sources as readonly PrefetchSource[])
     : [sources as PrefetchSource];
   return NativeTrueImage.prefetch(
-    list.map((item) =>
-      typeof item === 'string'
-        ? { uri: item }
-        : { uri: item.uri, headers: toNativeHeaders(item.headers) }
-    )
+    list.map((item) => {
+      const request = typeof item === 'string' ? { uri: item } : item;
+      const settings = { ...options, ...request };
+      const size = settings.displaySize;
+      if (
+        size &&
+        (!Number.isFinite(size.width) ||
+          !Number.isFinite(size.height) ||
+          size.width <= 0 ||
+          size.height <= 0)
+      ) {
+        throw new RangeError(
+          'displaySize dimensions must be finite and positive'
+        );
+      }
+      if (settings.downsampleThreshold !== undefined) {
+        validateThreshold(settings.downsampleThreshold);
+      }
+      return {
+        uri: request.uri,
+        headers: toNativeHeaders(request.headers),
+        displayWidth: size?.width,
+        displayHeight: size?.height,
+        resizeMode: settings.resizeMode,
+        downsampleThreshold: settings.downsampleThreshold,
+      };
+    })
   );
 }
 

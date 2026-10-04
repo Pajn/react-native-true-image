@@ -35,7 +35,22 @@
         }
       }
     }
-    [parsed addObject:[TrueImagePrefetchRequest requestWithURL:url headers:headers.count > 0 ? headers : nil]];
+    TrueImagePrefetchRequest *parsedRequest = [TrueImagePrefetchRequest requestWithURL:url headers:headers.count > 0 ? headers : nil];
+    CGFloat w = [request[@"displayWidth"] doubleValue];
+    CGFloat h = [request[@"displayHeight"] doubleValue];
+    CGFloat threshold = request[@"downsampleThreshold"] ? [request[@"downsampleThreshold"] doubleValue] : 2;
+    if (!isfinite(w) || !isfinite(h) || w < 0 || h < 0 || (w > 0) != (h > 0) ||
+        !isfinite(threshold) || (threshold != 0 && threshold < 1)) {
+      allValid = NO;
+      continue;
+    }
+    parsedRequest.pixelSize = CGSizeMake(round(w * UIScreen.mainScreen.scale), round(h * UIScreen.mainScreen.scale));
+    parsedRequest.downsampleThreshold = threshold;
+    NSString *mode = request[@"resizeMode"];
+    parsedRequest.fitMode = [mode isEqualToString:@"contain"] ? TrueImageFitModeContain :
+      [mode isEqualToString:@"stretch"] ? TrueImageFitModeStretch :
+      [mode isEqualToString:@"center"] ? TrueImageFitModeCenter : TrueImageFitModeCover;
+    [parsed addObject:parsedRequest];
   }
   [TrueImageLoader prefetch:parsed
                  completion:^(BOOL ok) {

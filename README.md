@@ -1,8 +1,8 @@
 # react-native-true-image
 
 A single-layer image component for React Native with a cache-key contract
-between `prefetch` and the view, so a prefetched image mounts as a
-synchronous memory hit. Built as a Fabric component and TurboModule on
+between sized `prefetch` requests and the view, so matching images mount as
+synchronous memory hits. Oversized bitmaps are downsampled during decoding. Built as a Fabric component and TurboModule on
 SDWebImage (iOS) and Glide (Android).
 
 One native view draws one image on one layer (iOS) or one canvas (Android).
@@ -70,6 +70,7 @@ Clipping relies on the default `overflow: 'hidden'`; overriding it to
 | --- | --- | --- |
 | `source` | | `string`, `{ uri, headers }`, `require()` id, or `null` to clear |
 | `resizeMode` | `'cover'` | `cover`, `contain`, `stretch`, `center` |
+| `downsampleThreshold` | 2 | Linear oversize factor before decode-time downsampling. `1` always downsamples oversized images; `0` disables it |
 | `transition` | 300 ms for URLs, 0 for assets | Fade duration in milliseconds |
 | `blurRadius` | 0 | In source-image pixels, so the same value looks the same on both platforms |
 | `blurPixelsPerRadius` | 2 | Pixels the blur radius spans after the pre-blur shrink; `0` blurs at full size. See [Blur cost](#blur-cost) |
@@ -93,11 +94,50 @@ image always crossfades. An image whose fade is interrupted never reports
 
 ### Prefetch
 
-`Image.prefetch(source | source[])` takes URL strings or `{ uri, headers }`
-objects and resolves `true` only if every one loaded. Both the prefetch and
-the view build the identical request, so a view that mounts after a prefetch
-gets the image synchronously from memory. This is the module's central
-contract; anything that adds view size to the request key breaks it.
+`Image.prefetch(source | source[], options?)` takes URL strings or
+`{ uri, headers, displaySize?, resizeMode?, downsampleThreshold? }` objects
+and resolves `true` only if every image loaded. Options apply to the whole
+batch; per-source options override them.
+
+```tsx
+await Image.prefetch(covers.map((cover) => cover.url), {
+  displaySize: { width: 100, height: 100 },
+  resizeMode: 'cover',
+  downsampleThreshold: 2,
+});
+
+<Image source={cover.url} style={{ width: 100, height: 100 }} />
+```
+
+`displaySize` uses React Native layout units, like `style.width` and
+`style.height`. Native code converts to physical pixels using screen density.
+A view uses its measured size automatically and waits for nonzero layout
+before starting a sized load. Matching physical dimensions, resize mode and
+threshold share a decoded memory-cache entry. Estimates also work: a view
+reuses an existing variant when it has enough detail and is no more than the
+threshold above the required resolution. A full-resolution source that is
+smaller than the view can also be reused. A reduced variant that would need
+upscaling, an overly large variant, or changed decode settings require a new
+decode. Headers remain outside the key.
+Original downloaded data stays shared by URL on disk. Different sizes can
+therefore decode from disk without downloading the image again.
+
+Rendering defaults to `downsampleThreshold={2}`. When an image has more than
+twice the required resolution on each axis, it decodes near its displayed
+pixel size. Exactly 2× keeps the original; the threshold is linear, so 2×
+on both axes means four times the pixels. `cover` accounts for the portion
+outside the view, `contain` for the fitted image, and `stretch` conservatively
+retains enough detail on both axes. `center` and native vectors do not
+participate in downsampling. Images are never upscaled during decoding.
+The decoder may round the resulting dimensions, and `onLoad` reports the
+actual decoded pixel dimensions.
+
+Set `downsampleThreshold={0}` to retain the original-resolution behavior.
+Thresholds must be finite and either `0` or at least `1`; display dimensions
+must be finite and positive. Prefetching without `displaySize` still loads
+the original resolution, but does not guarantee a synchronous memory hit
+for a sized view. To keep the previous URL-only prefetch contract, opt out
+of downsampling on the view as well.
 
 On Android the prefetch loop runs on a background thread: each load is
 started with `submit()` and awaited there, and the main looper sees a single

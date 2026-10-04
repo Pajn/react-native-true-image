@@ -31,6 +31,7 @@ export interface NativeProps extends ViewProps {
    * (asset catalog image on iOS, drawable on Android).
    */
   source?: string;
+  downsampleThreshold?: CodegenTypes.WithDefault<CodegenTypes.Float, 2>;
   /** Request headers for remote sources. Not part of the cache key. */
   headers?: ReadonlyArray<Header>;
   resizeMode?: CodegenTypes.WithDefault<

@@ -1,4 +1,4 @@
-import type { ImageProps, PrefetchSource } from './types';
+import type { ImageProps, PrefetchOptions, PrefetchSource } from './types';
 
 function ImageComponent(_props: ImageProps): never {
   throw new Error(
@@ -7,7 +7,8 @@ function ImageComponent(_props: ImageProps): never {
 }
 
 function prefetch(
-  _sources: PrefetchSource | readonly PrefetchSource[]
+  _sources: PrefetchSource | readonly PrefetchSource[],
+  _options?: PrefetchOptions
 ): Promise<boolean> {
   return Promise.reject(
     new Error(

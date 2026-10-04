@@ -158,6 +158,7 @@
 {
   self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(1000, 1000) color:UIColor.greenColor];
   TrueImageHarness *h = [self harness];
+  h.view.downsampleThreshold = 2;
   h.view.blurRadius = 100;
   [h setSource:_a transition:0 recyclingKey:nil];
   XCTAssertTrue([self waitForEvents:h count:3]);
@@ -171,6 +172,7 @@
 {
   self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(1000, 1000) color:UIColor.greenColor];
   TrueImageHarness *h = [self harness];
+  h.view.downsampleThreshold = 2;
   h.view.blurRadius = 100;
   h.view.blurPixelsPerRadius = 10;
   [h setSource:_a transition:0 recyclingKey:nil];
@@ -186,11 +188,7 @@
   h.view.blurPixelsPerRadius = 0;
   [h setSource:_a transition:0 recyclingKey:nil];
   XCTAssertTrue([self waitForEvents:h count:3]);
-  CGFloat scale = h.view.traitCollection.displayScale;
-  XCTAssertTrue([self waitFor:^{
-    // The full-size blur is what the thumbnail tier resamples down to the view.
-    return CGImageGetWidth((CGImageRef)h.imageLayer.contents) == (size_t)(40 * scale);
-  }]);
+  XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 1000u);
 }
 
 - (void)testPixelsPerRadiusChangeIsANewImage
@@ -329,10 +327,11 @@
   XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 4u, @"a cleared view shows the placeholder");
 }
 
-- (void)testResizeRefinesToALargerThumbnail
+- (void)testResizeDecodesALargerVariant
 {
   self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(1000, 1000) color:UIColor.greenColor];
   TrueImageHarness *h = [self harness];
+  h.view.downsampleThreshold = 2;
   [h setSource:_a transition:0 recyclingKey:nil];
   XCTAssertTrue([self waitForEvents:h count:3]);
   CGFloat scale = h.view.traitCollection.displayScale;
@@ -344,7 +343,7 @@
   XCTAssertTrue([self waitFor:^{
     return CGImageGetWidth((CGImageRef)h.imageLayer.contents) == (size_t)(100 * scale);
   }], @"a bigger view gets a bigger thumbnail");
-  XCTAssertEqual(h.events.count, 3u);
+  XCTAssertEqual(h.events.count, 6u);
 }
 
 - (void)testNullSourceClearsAndEmitsNothing
@@ -469,18 +468,19 @@
   XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), (size_t)(80 * scale));
 }
 
-- (void)testLargeImageIsRefinedToAThumbnailWithoutFade
+- (void)testLargeImageIsDecodedAtDisplaySizeWithoutFade
 {
   self.network.dataByURL[_a] = [TrueImageTestCase pngWithSize:CGSizeMake(400, 400) color:UIColor.greenColor];
   TrueImageHarness *h = [self harness];
+  h.view.downsampleThreshold = 2;
   [h setSource:_a transition:0 recyclingKey:nil];
   XCTAssertTrue([self waitForEvents:h count:3]);
   size_t expected = (size_t)(40 * h.view.traitCollection.displayScale);
   XCTAssertTrue([self waitFor:^{
     return CGImageGetWidth((CGImageRef)h.imageLayer.contents) == expected;
-  }], @"contents swapped for a thumbnail at the drawn pixel size");
+  }], @"the bitmap was decoded at the drawn pixel size");
   XCTAssertFalse(h.isFading);
-  XCTAssertEqual(h.events.count, 3u, @"the swap reports nothing new");
+  XCTAssertEqual(h.events.count, 3u, @"the decode reports one load");
 }
 
 - (void)testSmallImageIsNotRefined
@@ -548,6 +548,7 @@
   TrueImageHarness *h = [self harness];
   [h setSource:_a transition:300 recyclingKey:nil];
   [h.view prepareForRecycle];
+  h.view.downsampleThreshold = 0;
   [h setSource:_b transition:300 recyclingKey:nil];
   XCTAssertFalse(h.isFading, @"a memory hit into a cleared view draws at once; no crossfade from the stale image");
   XCTAssertEqual(CGImageGetWidth((CGImageRef)h.imageLayer.contents), 8u);

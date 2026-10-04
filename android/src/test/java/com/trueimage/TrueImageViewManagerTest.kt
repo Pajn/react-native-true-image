@@ -32,7 +32,7 @@ class TrueImageViewManagerTest {
 
   @Test
   fun borderRadiusIsApplied() {
-    val view = TrueImageView(app)
+    val view = TrueImageView(app).apply { downsampleThreshold = 0f }
     update(view, "borderRadius", 8.0, "borderTopLeftRadius", 2.0)
     val all = BackgroundStyleApplicator.getBorderRadius(view, BorderRadiusProp.BORDER_RADIUS)
     val topLeft = BackgroundStyleApplicator.getBorderRadius(view, BorderRadiusProp.BORDER_TOP_LEFT_RADIUS)
@@ -43,7 +43,7 @@ class TrueImageViewManagerTest {
 
   @Test
   fun borderWidthColorAndStyleAreApplied() {
-    val view = TrueImageView(app)
+    val view = TrueImageView(app).apply { downsampleThreshold = 0f }
     update(view, "borderWidth", 2.0, "borderColor", -65536.0, "borderStyle", "dashed", "borderLeftWidth", 4.0)
     assertEquals(2f, BackgroundStyleApplicator.getBorderWidth(view, LogicalEdge.ALL))
     assertEquals(4f, BackgroundStyleApplicator.getBorderWidth(view, LogicalEdge.LEFT))
@@ -52,7 +52,7 @@ class TrueImageViewManagerTest {
 
   @Test
   fun ownPropsStillReachTheView() {
-    val view = TrueImageView(app)
+    val view = TrueImageView(app).apply { downsampleThreshold = 0f }
     update(view, "resizeMode", "contain", "transition", 250, "recyclingKey", "row-1")
     assertEquals(FitMode.CONTAIN, view.fitMode)
     assertEquals(250, view.transitionMs)
@@ -61,7 +61,7 @@ class TrueImageViewManagerTest {
 
   @Test
   fun headersPropIsParsed() {
-    val view = TrueImageView(app)
+    val view = TrueImageView(app).apply { downsampleThreshold = 0f }
     val headers = com.facebook.react.bridge.JavaOnlyArray.of(
       JavaOnlyMap.of("name", "Authorization", "value", "Bearer t"),
       JavaOnlyMap.of("name", "X-Proxy", "value", "shelf"),

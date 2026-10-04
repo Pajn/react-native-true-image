@@ -45,6 +45,11 @@ class TrueImageViewManager :
     view.fitMode = FitMode.from(value)
   }
 
+  @ReactProp(name = "downsampleThreshold", defaultFloat = 2f)
+  override fun setDownsampleThreshold(view: TrueImageView, value: Float) {
+    view.downsampleThreshold = if (value.isFinite() && (value == 0f || value >= 1f)) value else 2f
+  }
+
   @ReactProp(name = "transition")
   override fun setTransition(view: TrueImageView, value: Int) {
     view.transitionMs = value

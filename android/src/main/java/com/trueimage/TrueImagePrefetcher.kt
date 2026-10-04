@@ -9,7 +9,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 object TrueImagePrefetcher {
-  data class Request(val source: String, val headers: Map<String, String>? = null)
+  data class Request(val source: String, val headers: Map<String, String>? = null, val size: TrueImageRequests.Size = TrueImageRequests.Size())
 
   /**
    * Prefetch batches usually race the mount work they are meant to feed, so
@@ -32,25 +32,25 @@ object TrueImagePrefetcher {
     executor.execute {
       val glide = TrueImageRequests.glide(context)
       var ok = true
-      val futures = ArrayList<FutureTarget<Drawable>>(requests.size)
+      val futures = ArrayList<Pair<Request, FutureTarget<Drawable>>>(requests.size)
       for (request in requests) {
         val model = TrueImageRequests.model(context, request.source, request.headers)
         if (model == null) {
           ok = false
           continue
         }
-        futures += TrueImageRequests.drawable(glide, model).submit()
+        futures += request to TrueImageRequests.drawable(glide, model, request.size).submit()
       }
-      for (future in futures) {
+      for ((request, future) in futures) {
         try {
-          future.get()
+          TrueImageDecodeCache.record(request.source, request.size, future.get())
         } catch (e: Exception) {
           ok = false
         }
       }
       // Clearing the targets is what moves the bitmaps from Glide's active
       // set into the memory cache. One main-thread item for the whole batch.
-      Handler(Looper.getMainLooper()).post { for (future in futures) glide.clear(future) }
+      Handler(Looper.getMainLooper()).post { for ((_, future) in futures) glide.clear(future) }
       done(ok)
     }
   }

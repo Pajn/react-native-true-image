@@ -15,6 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// Sent with remote requests. Not part of the cache key.
 @property (nonatomic, copy, nullable) NSDictionary<NSString *, NSString *> *headers;
 @property (nonatomic, assign) TrueImageFitMode fitMode;
+@property (nonatomic, assign) CGFloat downsampleThreshold;
 /// Fade duration in milliseconds.
 @property (nonatomic, assign) NSInteger transition;
 /// In source-image pixels.
