@@ -78,6 +78,46 @@
   XCTAssertTrue(([self prefetch:@[]]));
 }
 
+- (void)testDefaultLoaderReachesTheSharedDownloaderWithoutAnOverride
+{
+  SDWebImageDownloader *downloader = SDWebImageDownloader.sharedDownloader;
+  id<SDWebImageDownloaderRequestModifier> savedModifier = downloader.requestModifier;
+  id<SDImageLoader> savedLoader = SDWebImageManager.defaultImageLoader;
+  __block BOOL requested = NO;
+  @try {
+    SDWebImageManager.defaultImageLoader = nil;
+    [TrueImageLoader setImageLoaderForTesting:nil];
+    downloader.requestModifier = [SDWebImageDownloaderRequestModifier requestModifierWithBlock:^NSURLRequest *(NSURLRequest *request) {
+      requested = YES;
+      XCTAssertEqualObjects(request.URL.absoluteString, self->_url);
+      // Stop before hitting the network; reaching this callback proves the
+      // production downloader was selected rather than the injected fake.
+      return nil;
+    }];
+    XCTAssertFalse(([self prefetch:@[ _url ]]));
+    XCTAssertTrue(requested, @"an unset defaultImageLoader must still use the shared downloader");
+    XCTAssertEqual([self.network fetchCount:_url], 0u);
+  } @finally {
+    downloader.requestModifier = savedModifier;
+    SDWebImageManager.defaultImageLoader = savedLoader;
+    [TrueImageLoader setImageLoaderForTesting:self.network];
+  }
+}
+
+- (void)testConfiguredDefaultLoaderIsUsedWithoutATestOverride
+{
+  id<SDImageLoader> savedLoader = SDWebImageManager.defaultImageLoader;
+  @try {
+    SDWebImageManager.defaultImageLoader = self.network;
+    [TrueImageLoader setImageLoaderForTesting:nil];
+    XCTAssertTrue(([self prefetch:@[ _url ]]));
+    XCTAssertEqual([self.network fetchCount:_url], 1u);
+  } @finally {
+    SDWebImageManager.defaultImageLoader = savedLoader;
+    [TrueImageLoader setImageLoaderForTesting:self.network];
+  }
+}
+
 - (void)testPartialFailureResolvesFalseAndAllSuccessTrue
 {
   NSString *bad = @"https://cdn.example.com/bad.jpg";

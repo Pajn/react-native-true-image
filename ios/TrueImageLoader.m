@@ -93,7 +93,10 @@ static SDWebImageManager *gManager;
 static SDWebImageManager *Manager(void)
 {
   if (!gManager) {
-    id<SDImageLoader> loader = gTestLoader ?: SDWebImageManager.defaultImageLoader;
+    // defaultImageLoader is an optional override, not the default downloader.
+    // Match SDWebImageManager's init fallback when no override is installed.
+    id<SDImageLoader> loader = gTestLoader ?: SDWebImageManager.defaultImageLoader
+        ?: SDWebImageDownloader.sharedDownloader;
     gManager = [[SDWebImageManager alloc] initWithCache:SDImageCache.sharedImageCache loader:loader];
   }
   return gManager;
