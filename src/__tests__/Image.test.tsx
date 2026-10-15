@@ -1,14 +1,27 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { render, screen } from '@testing-library/react-native';
 import { Image as RNImage } from 'react-native';
-import { Image, resolveSource, resolveTransition } from '../Image.native';
+import {
+  COLOR_SAMPLE_SIZE,
+  Image,
+  resolveSource,
+  resolveTransition,
+} from '../Image.native';
 import { DEFAULT_TRANSITION } from '../types';
 
 const mockPrefetch = jest.fn<(requests: unknown[]) => Promise<boolean>>();
+const mockGetPixels =
+  jest.fn<
+    (uri: string, size: number, headers: unknown) => Promise<string | null>
+  >();
 
 jest.mock('../specs/NativeTrueImage', () => ({
   __esModule: true,
-  default: { prefetch: (requests: unknown[]) => mockPrefetch(requests) },
+  default: {
+    prefetch: (requests: unknown[]) => mockPrefetch(requests),
+    getPixels: (uri: string, size: number, headers: unknown) =>
+      mockGetPixels(uri, size, headers),
+  },
 }));
 
 jest.mock('../specs/TrueImageViewNativeComponent', () => {
@@ -28,6 +41,8 @@ function nativeProps() {
 beforeEach(() => {
   mockPrefetch.mockReset();
   mockPrefetch.mockResolvedValue(true);
+  mockGetPixels.mockReset();
+  mockGetPixels.mockResolvedValue(null);
 });
 
 describe('source resolution', () => {
@@ -326,5 +341,74 @@ describe('prefetch', () => {
     await expect(Image.prefetch(['https://x/missing.jpg'])).resolves.toBe(
       false
     );
+  });
+});
+
+describe('getColors', () => {
+  /** A sample of one opaque colour, encoded as native sends it. */
+  function solid(r: number, g: number, b: number): string {
+    const bytes = Buffer.alloc(COLOR_SAMPLE_SIZE * COLOR_SAMPLE_SIZE * 4);
+    for (let i = 0; i < bytes.length; i += 4) {
+      bytes[i] = r;
+      bytes[i + 1] = g;
+      bytes[i + 2] = b;
+      bytes[i + 3] = 255;
+    }
+    return bytes.toString('base64');
+  }
+
+  it('asks native for a square sample of the URL', async () => {
+    mockGetPixels.mockResolvedValue(solid(30, 90, 200));
+    const colors = await Image.getColors('https://x/a.jpg');
+    expect(mockGetPixels).toHaveBeenCalledWith(
+      'https://x/a.jpg',
+      COLOR_SAMPLE_SIZE,
+      undefined
+    );
+    expect(colors).toEqual(
+      expect.objectContaining({ dominant: '#1e5ac8', vibrant: '#1e5ac8' })
+    );
+  });
+
+  it('sends option headers, with the source headers winning', async () => {
+    await Image.getColors(
+      { uri: 'https://x/a.jpg', headers: { Authorization: 'Bearer s' } },
+      { headers: { 'Authorization': 'Bearer o', 'X-Proxy': 'shelf' } }
+    );
+    expect(mockGetPixels).toHaveBeenCalledWith(
+      'https://x/a.jpg',
+      COLOR_SAMPLE_SIZE,
+      [
+        { name: 'Authorization', value: 'Bearer s' },
+        { name: 'X-Proxy', value: 'shelf' },
+      ]
+    );
+  });
+
+  it('resolves a require() asset like the view', async () => {
+    const spy = jest
+      .spyOn(RNImage, 'resolveAssetSource')
+      .mockReturnValue({ uri: 'file:///bundle/cover.png' } as never);
+    await Image.getColors(42);
+    expect(mockGetPixels).toHaveBeenCalledWith(
+      'file:///bundle/cover.png',
+      COLOR_SAMPLE_SIZE,
+      undefined
+    );
+    spy.mockRestore();
+  });
+
+  it('resolves null when native could not load the image', async () => {
+    await expect(Image.getColors('https://x/missing.jpg')).resolves.toBeNull();
+  });
+
+  it('resolves null for a sample of the wrong size', async () => {
+    mockGetPixels.mockResolvedValue(Buffer.alloc(12).toString('base64'));
+    await expect(Image.getColors('https://x/a.jpg')).resolves.toBeNull();
+  });
+
+  it('resolves null for an empty source without calling native', async () => {
+    await expect(Image.getColors(null)).resolves.toBeNull();
+    expect(mockGetPixels).not.toHaveBeenCalled();
   });
 });

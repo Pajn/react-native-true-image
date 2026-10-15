@@ -14,15 +14,19 @@ import com.facebook.react.bridge.ReactApplicationContext
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /** The module parses what JS sends and resolves through the prefetcher. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [27])
+// Real decoding and drawing, so getPixels returns the image's colours.
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TrueImageModuleTest : GlideTestCase() {
   /** The module only needs a Context; the bridge surface is unused. */
   private class TestReactContext(app: android.app.Application) : ReactApplicationContext(app) {
@@ -80,5 +84,51 @@ class TrueImageModuleTest : GlideTestCase() {
   @Test
   fun emptyListResolvesTrue() {
     assertTrue(prefetchViaModule())
+  }
+
+  /** The base64 string getPixels resolves, or null. */
+  private fun pixelsViaModule(uri: String, size: Double, headers: JavaOnlyArray? = null): String? {
+    val module = TrueImageModule(TestReactContext(app))
+    val value = AtomicReference<Array<out Any?>?>(null)
+    val promise = PromiseImpl(
+      Callback { args -> value.set(args) },
+      Callback { error("getPixels must resolve, never reject") },
+    )
+    module.getPixels(uri, size, headers, promise)
+    settle { value.get() != null }
+    return value.get()!![0] as String?
+  }
+
+  @Test
+  fun getPixelsResolvesTheImageAsRgbaAtTheRequestedSize() {
+    val encoded = pixelsViaModule("https://cdn.example.com/a.jpg", 16.0)!!
+    val bytes = android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP)
+    assertEquals(16 * 16 * 4, bytes.size)
+    // The fake network serves an opaque (200, 50, 50) square.
+    for (i in bytes.indices step 4) {
+      assertEquals(listOf(200, 50, 50, 255), (0 until 4).map { bytes[i + it].toInt() and 0xff })
+    }
+    assertEquals(1, network.fetches["https://cdn.example.com/a.jpg"])
+  }
+
+  @Test
+  fun getPixelsPassesHeadersThrough() {
+    val headers = JavaOnlyArray.of(JavaOnlyMap.of("name", "Authorization", "value", "Bearer t"))
+    pixelsViaModule("https://cdn.example.com/a.jpg", 16.0, headers)
+    assertEquals(mapOf("Authorization" to "Bearer t"), network.headersSeen["https://cdn.example.com/a.jpg"])
+  }
+
+  @Test
+  fun getPixelsResolvesNullWhenTheLoadFails() {
+    network.failAlways += "https://cdn.example.com/missing.jpg"
+    assertNull(pixelsViaModule("https://cdn.example.com/missing.jpg", 16.0))
+  }
+
+  @Test
+  fun getPixelsResolvesNullForAnUnusableSize() {
+    for (size in listOf(0.0, -1.0, Double.NaN, 257.0)) {
+      assertNull(pixelsViaModule("https://cdn.example.com/a.jpg", size))
+    }
+    assertEquals(null, network.fetches["https://cdn.example.com/a.jpg"])
   }
 }
