@@ -1,7 +1,22 @@
 #import "TrueImageModule.h"
 
 #import "TrueImageLoader.h"
+#import "TrueImagePixels.h"
 #import "TrueImagePolicy.h"
+
+/// Parses the `[{ name, value }]` list JS sends; nil when there is nothing to send.
+static NSDictionary<NSString *, NSString *> *HeadersFromList(id list)
+{
+  if (![list isKindOfClass:NSArray.class]) return nil;
+  NSMutableDictionary<NSString *, NSString *> *headers = [NSMutableDictionary new];
+  for (id header in list) {
+    if ([header isKindOfClass:NSDictionary.class] && [header[@"name"] isKindOfClass:NSString.class] &&
+        [header[@"value"] isKindOfClass:NSString.class]) {
+      headers[header[@"name"]] = header[@"value"];
+    }
+  }
+  return headers.count > 0 ? headers : nil;
+}
 
 @implementation TrueImageModule
 
@@ -25,17 +40,8 @@
       allValid = NO;
       continue;
     }
-    NSMutableDictionary<NSString *, NSString *> *headers = nil;
-    if ([request[@"headers"] isKindOfClass:NSArray.class]) {
-      headers = [NSMutableDictionary new];
-      for (id header in request[@"headers"]) {
-        if ([header isKindOfClass:NSDictionary.class] && [header[@"name"] isKindOfClass:NSString.class] &&
-            [header[@"value"] isKindOfClass:NSString.class]) {
-          headers[header[@"name"]] = header[@"value"];
-        }
-      }
-    }
-    TrueImagePrefetchRequest *parsedRequest = [TrueImagePrefetchRequest requestWithURL:url headers:headers.count > 0 ? headers : nil];
+    TrueImagePrefetchRequest *parsedRequest = [TrueImagePrefetchRequest requestWithURL:url
+                                                                              headers:HeadersFromList(request[@"headers"])];
     CGFloat w = [request[@"displayWidth"] doubleValue];
     CGFloat h = [request[@"displayHeight"] doubleValue];
     CGFloat threshold = request[@"downsampleThreshold"] ? [request[@"downsampleThreshold"] doubleValue] : 2;
@@ -56,6 +62,22 @@
                  completion:^(BOOL ok) {
                    resolve(@(ok && allValid));
                  }];
+}
+
+- (void)getPixels:(NSString *)uri
+             size:(double)size
+          headers:(NSArray *)headers
+          resolve:(RCTPromiseResolveBlock)resolve
+           reject:(RCTPromiseRejectBlock)reject
+{
+  [TrueImageLoader configureOnce];
+  NSUInteger side = isfinite(size) && size >= 1 && size <= TrueImagePixels.maxSize ? (NSUInteger)size : 0;
+  [TrueImagePixels loadSource:uri
+                      headers:HeadersFromList(headers)
+                         size:side
+                   completion:^(NSData *rgba) {
+                     resolve([rgba base64EncodedStringWithOptions:0]);
+                   }];
 }
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:

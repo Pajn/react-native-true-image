@@ -144,6 +144,44 @@ started with `submit()` and awaited there, and the main looper sees a single
 post per batch. Prefetches usually race the mount work they feed, so they
 stay out of its queue.
 
+### Colours
+
+`Image.getColors(source, options?)` picks colours from an image, for example
+to tint a player with its album artwork. It accepts the same shapes as
+`source`; `options.headers` are sent with the request, and a
+`{ uri, headers }` source's own headers win over them.
+
+```tsx
+const colors = await Image.getColors(track.artworkUrl);
+if (colors) {
+  setTint(colors.darkVibrant ?? colors.darkMuted ?? colors.dominant);
+}
+```
+
+It resolves an `ImageColors` object, or `null` if the image could not be
+loaded or decoded, or has no opaque pixels:
+
+| Field | Notes |
+| --- | --- |
+| `dominant` | The most common colour after the filter below, as in Palette: a mostly black cover reports its most common other colour. The mean colour when the filter leaves nothing. Never null |
+| `vibrant`, `lightVibrant`, `darkVibrant` | Saturated colours at mid, light and dark lightness |
+| `muted`, `lightMuted`, `darkMuted` | Desaturated colours at mid, light and dark lightness |
+
+Every colour is a `#rrggbb` string. The six named swatches are null when no
+colour in the image fits them, and a colour fills one of them at most.
+
+The image loads through the same request as a view or prefetch of that URL,
+so a cached image is not downloaded again. Native code decodes it near
+48 × 48 pixels and stretches it to that square; the palette is computed in
+JS from those pixels, so both platforms pick colours the same way. The
+algorithm follows Android's Palette: transparent pixels are skipped, near
+black, near white and skin-like reds are filtered out, the rest is reduced
+to 16 colours by median cut, and each colour is scored against the six
+targets by saturation, lightness and how much of the image it covers.
+Swatch colours are the mean of the pixels they cover, so a flat colour comes
+back exactly. Scaling filters differ slightly between the platforms, so the
+same image can give colours a level or two apart.
+
 ### Placeholder
 
 A placeholder stands in while `source` loads: a low-resolution copy that a

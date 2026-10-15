@@ -1,5 +1,6 @@
 import { useMemo, useRef, type Ref } from 'react';
 import { Image as RNImage, StyleSheet, type HostInstance } from 'react-native';
+import { decodeBase64, paletteFromPixels } from './colors';
 import NativeTrueImage from './specs/NativeTrueImage';
 import TrueImageView from './specs/TrueImageViewNativeComponent';
 import {
@@ -7,6 +8,8 @@ import {
   DEFAULT_TRANSITION,
   DEFAULT_DOWNSAMPLE_THRESHOLD,
   type PrefetchOptions,
+  type ImageColors,
+  type ImageColorsOptions,
   type ImageErrorEvent,
   type ImageLoadEvent,
   type ImageProps,
@@ -188,7 +191,39 @@ async function prefetch(
   );
 }
 
-export const Image = Object.assign(ImageComponent, { prefetch });
+/**
+ * Side of the square the image is sampled at for `getColors`. Enough pixels
+ * for a stable palette, few enough to cross the bridge and quantise quickly.
+ */
+export const COLOR_SAMPLE_SIZE = 48;
+
+/**
+ * Picks the dominant colour and Palette-style swatches from an image.
+ * Resolves null if the image could not be loaded or decoded, or has no
+ * opaque pixels.
+ */
+async function getColors(
+  source: ImageSource,
+  options: ImageColorsOptions = {}
+): Promise<ImageColors | null> {
+  const { uri } = resolveSource(source);
+  if (uri === undefined) return null;
+  const headers =
+    typeof source === 'object' && source !== null
+      ? { ...options.headers, ...source.headers }
+      : options.headers;
+  const pixels = await NativeTrueImage.getPixels(
+    uri,
+    COLOR_SAMPLE_SIZE,
+    toNativeHeaders(headers)
+  );
+  if (pixels == null) return null;
+  const bytes = decodeBase64(pixels);
+  if (bytes.length !== COLOR_SAMPLE_SIZE * COLOR_SAMPLE_SIZE * 4) return null;
+  return paletteFromPixels(bytes);
+}
+
+export const Image = Object.assign(ImageComponent, { prefetch, getColors });
 
 const styles = StyleSheet.create({
   image: {

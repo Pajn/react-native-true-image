@@ -35,6 +35,11 @@ class TrueImageModule(reactContext: ReactApplicationContext) : NativeTrueImageSp
     TrueImagePrefetcher.prefetch(reactApplicationContext, parsed) { ok -> promise.resolve(ok && allValid) }
   }
 
+  override fun getPixels(uri: String, size: Double, headers: ReadableArray?, promise: Promise) {
+    val side = if (size >= 1 && size <= TrueImagePixels.MAX_SIZE) size.toInt() else 0
+    TrueImagePixels.load(reactApplicationContext, uri, TrueImageHeaders.fromArray(headers), side) { promise.resolve(it) }
+  }
+
   companion object {
     const val NAME = NativeTrueImageSpec.NAME
   }

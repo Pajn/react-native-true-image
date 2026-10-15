@@ -1,4 +1,11 @@
-import type { ImageProps, PrefetchOptions, PrefetchSource } from './types';
+import type {
+  ImageColors,
+  ImageColorsOptions,
+  ImageProps,
+  ImageSource,
+  PrefetchOptions,
+  PrefetchSource,
+} from './types';
 
 function ImageComponent(_props: ImageProps): never {
   throw new Error(
@@ -17,6 +24,17 @@ function prefetch(
   );
 }
 
-export const Image = Object.assign(ImageComponent, { prefetch });
+function getColors(
+  _source: ImageSource,
+  _options?: ImageColorsOptions
+): Promise<ImageColors | null> {
+  return Promise.reject(
+    new Error(
+      "'react-native-true-image' is only supported on native platforms."
+    )
+  );
+}
+
+export const Image = Object.assign(ImageComponent, { prefetch, getColors });
 
 export type ImageRef = never;

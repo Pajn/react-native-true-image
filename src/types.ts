@@ -29,6 +29,33 @@ export interface PrefetchOptions {
   downsampleThreshold?: number;
 }
 
+/**
+ * Colours picked from an image, each as `#rrggbb`. The six named swatches
+ * follow Android's Palette targets and are null when no colour in the image
+ * fits one; a colour fills one target at most.
+ */
+export interface ImageColors {
+  /**
+   * The most common colour. Near black, near white and skin-like reds are
+   * filtered first, as in Palette; the mean colour if nothing else is left.
+   */
+  dominant: string;
+  vibrant: string | null;
+  lightVibrant: string | null;
+  darkVibrant: string | null;
+  muted: string | null;
+  lightMuted: string | null;
+  darkMuted: string | null;
+}
+
+export interface ImageColorsOptions {
+  /**
+   * Sent with the request, like `ImageURISource.headers`. A `{ uri, headers }`
+   * source's own headers win over these.
+   */
+  headers?: Record<string, string>;
+}
+
 /** What `Image.prefetch` accepts, with optional per-image decode settings. */
 export type PrefetchSource = string | (ImageURISource & PrefetchOptions);
 

@@ -6,6 +6,8 @@ export {
   DEFAULT_DOWNSAMPLE_THRESHOLD,
   type DisplaySize,
   type PrefetchOptions,
+  type ImageColors,
+  type ImageColorsOptions,
   type ImageErrorEvent,
   type ImageLoadEvent,
   type ImageProps,
