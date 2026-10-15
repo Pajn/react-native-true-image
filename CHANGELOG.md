@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format follows [Conventional Commits](https://www.conventionalcommits.org/); entries are generated at release time.
 
 
+## [2.1.0](https://github.com/Pajn/react-native-true-image/compare/v2.0.1...v2.1.0) (2026-10-15)
+
+### Features
+
+* pick colours from an image with Image.getColors ([3145c58](https://github.com/Pajn/react-native-true-image/commit/3145c5889faf78269a4a07fa206916d3fe7743dd)), references [#rrggbb](https://github.com/Pajn/react-native-true-image/issues/rrggbb)
+
 ## [2.0.1](https://github.com/Pajn/react-native-true-image/compare/v2.0.0...v2.0.1) (2026-10-11)
 
 ### Bug Fixes
