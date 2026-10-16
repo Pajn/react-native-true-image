@@ -190,7 +190,8 @@ static void Read(NSUInteger epoch)
   }
   @synchronized (Lock()) {
     if (epoch != gEpoch) return;
-    NSArray<NSString *> *recentOrder = Order().array;
+    // A copy: an ordered set's array follows the set, which is about to be refilled.
+    NSArray<NSString *> *recentOrder = [Order().array copy];
     NSDictionary *recent = [Keys() copy];
     [Keys() removeAllObjects];
     [Order() removeAllObjects];
@@ -200,6 +201,7 @@ static void Read(NSUInteger epoch)
     }
     for (NSString *key in recentOrder) {
       NSArray<TrueImageVariant *> *mine = recent[key];
+      if (mine.count == 0) continue;
       NSMutableArray *merged = [NSMutableArray new];
       for (TrueImageVariant *old in Keys()[key]) {
         if ([mine indexOfObjectPassingTest:^BOOL(TrueImageVariant *v, NSUInteger i, BOOL *stop) {
