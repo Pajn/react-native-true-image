@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format follows [Conventional Commits](https://www.conventionalcommits.org/); entries are generated at release time.
 
 
+## [2.2.1](https://github.com/Pajn/react-native-true-image/compare/v2.2.0...v2.2.1) (2026-10-16)
+
+### Bug Fixes
+
+* **android:** support React Native 0.88 view manager overrides ([4ca3c76](https://github.com/Pajn/react-native-true-image/commit/4ca3c764c9029534f27493b21d02b7b184f2fa58))
+
 ## [2.2.0](https://github.com/Pajn/react-native-true-image/compare/v2.1.0...v2.2.0) (2026-10-16)
 
 ### Features
