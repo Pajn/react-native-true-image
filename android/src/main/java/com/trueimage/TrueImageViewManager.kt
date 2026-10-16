@@ -40,6 +40,11 @@ class TrueImageViewManager :
     view.headers = TrueImageHeaders.fromArray(value)
   }
 
+  @ReactProp(name = "cacheKey")
+  override fun setCacheKey(view: TrueImageView, value: String?) {
+    view.cacheKey = value
+  }
+
   @ReactProp(name = "resizeMode")
   override fun setResizeMode(view: TrueImageView, value: String?) {
     view.fitMode = FitMode.from(value)

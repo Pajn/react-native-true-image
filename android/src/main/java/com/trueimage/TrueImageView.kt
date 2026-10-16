@@ -6,9 +6,12 @@ import android.graphics.Paint
 import android.graphics.PaintFlagsDrawFilter
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.animation.AnimationUtils
 import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.CustomTarget
@@ -33,6 +36,12 @@ class TrueImageView(context: Context) : View(context) {
   var source: String? = null
   /** Sent with remote requests. Not part of the cache key. */
   var headers: Map<String, String>? = null
+  /**
+   * URLs sharing a cache key are one picture at different sizes: a cached
+   * variant big enough for the view is shown instead of fetching [source],
+   * and a smaller one stands in while it loads. See [TrueImageVariants].
+   */
+  var cacheKey: String? = null
   var fitMode: FitMode = FitMode.COVER
   var downsampleThreshold: Float = 2f
   /** Fade duration in milliseconds. */
@@ -67,14 +76,19 @@ class TrueImageView(context: Context) : View(context) {
    * keeps the sharp original as the source for re-blurs and as the size the
    * fit is computed from; [blurred] is what gets drawn.
    */
-  private class Layer(val request: Request, val fromResource: Boolean, val isPlaceholder: Boolean = false) {
+  private class Layer(var request: Request, val fromResource: Boolean, val isPlaceholder: Boolean = false) {
     var drawable: Drawable? = null
+    /** The request that answered; another URL than [request]'s when a variant was reused. */
+    var answer: Attempt? = null
     var target: Target<Drawable>? = null
     var fromMemory = false
     var blurred: Drawable? = null
     var blurKey: String? = null
 
     val display: Drawable? get() = blurred ?: drawable
+
+    /** The URL whose pixels this layer holds. */
+    val shownSource: String get() = answer?.source ?: request.source
   }
 
   private var current: Layer? = null
@@ -94,6 +108,7 @@ class TrueImageView(context: Context) : View(context) {
   private var released = false
 
   private val filter = PaintFlagsDrawFilter(0, Paint.FILTER_BITMAP_FLAG)
+  private val main = Handler(Looper.getMainLooper())
 
   /** Tests observe events here instead of through the React event dispatcher. */
   internal var eventSink: ((name: String, payload: Map<String, Any>) -> Unit)? = null
@@ -207,7 +222,31 @@ class TrueImageView(context: Context) : View(context) {
 
   // MARK: Loading
 
-  private fun load(request: Request, memoryOnly: Boolean = request.size != request(request.source, reuse = false).size) {
+  /** Where an attempt may be answered from. */
+  private enum class Tier {
+    /** Glide's memory cache alone; probed synchronously and dropped on a miss. */
+    MEMORY,
+    /** The memory and disk caches, never the network. */
+    CACHE,
+    /** Anywhere, the network included. */
+    NETWORK,
+  }
+
+  /**
+   * One Glide request that may answer a layer. A layer's attempts run in
+   * order until one succeeds; for a source with a cacheKey they include
+   * other URLs of the same picture.
+   */
+  private data class Attempt(
+    val source: String,
+    val size: TrueImageRequests.Size,
+    val tier: Tier,
+    val headers: Map<String, String>?,
+    /** Recorded in [TrueImageVariants] when this attempt succeeds. */
+    val cacheKey: String? = null,
+  )
+
+  private fun load(request: Request) {
     cancelPending()
 
     val vector = TrueImageResources.vector(context, request.source)
@@ -228,114 +267,216 @@ class TrueImageView(context: Context) : View(context) {
     }
 
     val layer = Layer(request, fromResource = model is Int)
-    val target = object : CustomTarget<Drawable>() {
-      override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
-        // A stale target (superseded by a newer source) is silent.
-        if (pending !== layer) return
-        // Two views sharing one cached drawable must not share alpha.
-        TrueImageDecodeCache.record(request.source, request.size, resource)
-        layer.drawable = resource.mutate()
-        present(layer)
-      }
-
-      override fun onLoadFailed(errorDrawable: Drawable?) {
-        if (pending !== layer) return
-        if (memoryOnly) {
-          // Glide forbids starting or clearing requests inside a target callback.
-          android.os.Handler(android.os.Looper.getMainLooper()).post {
-            if (pending === layer && !released) load(request(request.source, reuse = false), memoryOnly = false)
-          }
-          return
-        }
-        pending = null
-        emitError("Failed to load image", request.source)
-      }
-
-      override fun onLoadCleared(placeholder: Drawable?) {
-        layer.drawable = null
-        invalidate()
-      }
-    }
-    layer.target = target
     pending = layer
-
-    val listener = object : RequestListener<Drawable> {
-      override fun onResourceReady(
-        resource: Drawable,
-        model: Any,
-        target: Target<Drawable>?,
-        dataSource: DataSource,
-        isFirstResource: Boolean,
-      ): Boolean {
-        layer.fromMemory = dataSource == DataSource.MEMORY_CACHE
-        return false
-      }
-
-      override fun onLoadFailed(
-        e: GlideException?,
-        model: Any?,
-        target: Target<Drawable>,
-        isFirstResource: Boolean,
-      ): Boolean = false
+    run(layer, attempts(request)) {
+      pending = null
+      emitError("Failed to load image", request.source)
     }
-
-    // A memory hit is delivered synchronously inside into().
-    val builder = TrueImageRequests.drawable(TrueImageRequests.glide(context), model, request.size)
-    if (memoryOnly) builder.onlyRetrieveFromCache(true).diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE)
-    builder.listener(listener)
-      .into(target)
     // Only an empty view gets a placeholder; a displayed image stays up
     // until its replacement arrives.
-    if (current == null && pending === layer) loadPlaceholder()
+    if ((current == null || current?.isPlaceholder == true) && pending === layer) loadPlaceholder()
   }
 
   /**
-   * Loads the placeholder for a pending source into an empty view. One
-   * already showing is kept. A remote placeholder is answered from Glide's
-   * caches unless it may hit the network. Silent on failure.
+   * The requests that may answer [request], in order. A compatible cached
+   * size is probed in memory before the view's own size is loaded. With a
+   * cacheKey and variants big enough for this view, memory is probed for
+   * the URL and then each variant before anything touches the disk, then
+   * the disk cache likewise, and only then the network for the URL itself.
+   */
+  private fun attempts(request: Request): List<Attempt> {
+    val src = request.source
+    val own = request(src, reuse = false).size
+    val key = variantKey(src)
+    val sufficient = key?.let { variantChoice(it, src).sufficient }.orEmpty()
+    val list = ArrayList<Attempt>()
+    if (request.size != own || sufficient.isNotEmpty()) {
+      list += Attempt(src, request.size, Tier.MEMORY, headers, key)
+    }
+    if (sufficient.isNotEmpty()) {
+      for (variant in sufficient) list += Attempt(variant.url, request(variant.url).size, Tier.MEMORY, headers, key)
+      list += Attempt(src, own, Tier.CACHE, headers, key)
+      for (variant in sufficient) {
+        list += Attempt(variant.url, request(variant.url, reuse = false).size, Tier.CACHE, headers, key)
+      }
+    }
+    list += Attempt(src, own, Tier.NETWORK, headers, key)
+    return list
+  }
+
+  /** The cacheKey to use for [src], or null when it takes no part in variant reuse. */
+  private fun variantKey(src: String): String? {
+    val key = cacheKey?.takeIf { it.isNotEmpty() } ?: return null
+    if (fitMode == FitMode.CENTER || Source.kindOf(src) == SourceKind.RESOURCE) return null
+    return key
+  }
+
+  private fun variantChoice(key: String, src: String): TrueImageVariants.Choice =
+    TrueImageVariants.choose(TrueImageVariants.variants(context, key), src, width, height, fitMode)
+
+  /**
+   * Answers [layer] from the first of [attempts] that succeeds. A memory
+   * probe that misses is dropped at once and the next attempt starts, so a
+   * memory hit anywhere in the list is drawn inside this call, just as an
+   * exact hit is. Other attempts run one after another as each fails;
+   * [exhausted] runs when every one has.
+   */
+  private fun run(layer: Layer, attempts: List<Attempt>, from: Int = 0, exhausted: () -> Unit) {
+    for (i in from until attempts.size) {
+      val attempt = attempts[i]
+      val target = start(layer, attempt) {
+        // A variant the index promised but the cache no longer has.
+        if (attempt.tier == Tier.CACHE && attempt.cacheKey != null && attempt.source != layer.request.source) {
+          TrueImageVariants.forget(context, attempt.cacheKey, attempt.source)
+        }
+        run(layer, attempts, i + 1, exhausted)
+      }
+      if (attempt.tier != Tier.MEMORY || target.delivered || layer.target !== target) return
+      layer.target = null
+      TrueImageRequests.glide(context).clear(target)
+    }
+    exhausted()
+  }
+
+  private fun start(layer: Layer, attempt: Attempt, failed: () -> Unit): AttemptTarget {
+    val target = AttemptTarget(layer, attempt, failed)
+    layer.target = target
+    val model = TrueImageRequests.model(context, attempt.source, attempt.headers)
+    if (model == null) {
+      target.onLoadFailed(null)
+      return target
+    }
+    val builder = TrueImageRequests.drawable(TrueImageRequests.glide(context), model, attempt.size)
+    when (attempt.tier) {
+      Tier.MEMORY -> builder.onlyRetrieveFromCache(true).diskCacheStrategy(DiskCacheStrategy.NONE)
+      Tier.CACHE -> builder.onlyRetrieveFromCache(true)
+      Tier.NETWORK -> builder
+    }.listener(target).into(target)
+    return target
+  }
+
+  /** Whether [layer] is still wanted: the pending image or the pending placeholder. */
+  private fun isWaiting(layer: Layer) = pending === layer || pendingPlaceholder === layer
+
+  /**
+   * Receives one attempt. A memory hit arrives inside `into()`. A target
+   * that is no longer its layer's, or whose layer was superseded by a newer
+   * source, is silent.
+   */
+  private inner class AttemptTarget(
+    private val layer: Layer,
+    private val attempt: Attempt,
+    private val failed: () -> Unit,
+  ) : CustomTarget<Drawable>(), RequestListener<Drawable> {
+    var delivered = false
+      private set
+    private var fromMemory = false
+
+    override fun onResourceReady(
+      resource: Drawable,
+      model: Any,
+      target: Target<Drawable>?,
+      dataSource: DataSource,
+      isFirstResource: Boolean,
+    ): Boolean {
+      fromMemory = dataSource == DataSource.MEMORY_CACHE
+      return false
+    }
+
+    override fun onLoadFailed(e: GlideException?, model: Any?, target: Target<Drawable>, isFirstResource: Boolean) = false
+
+    override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
+      if (layer.target !== this || !isWaiting(layer)) return
+      delivered = true
+      TrueImageDecodeCache.record(attempt.source, attempt.size, resource)
+      attempt.cacheKey?.let { TrueImageVariants.record(context, it, attempt.source, resource) }
+      // A view keeps identifying the image by the source it asked for; when
+      // that source itself answered, by the size it was loaded at.
+      if (!layer.isPlaceholder && attempt.source == layer.request.source) {
+        layer.request = Request(attempt.source, attempt.size)
+      }
+      layer.answer = attempt
+      layer.fromMemory = fromMemory
+      // Two views sharing one cached drawable must not share alpha.
+      layer.drawable = resource.mutate()
+      if (layer.isPlaceholder) presentPlaceholder(layer) else present(layer)
+    }
+
+    override fun onLoadFailed(errorDrawable: Drawable?) {
+      if (layer.target !== this || !isWaiting(layer)) return
+      // Glide forbids starting or clearing requests inside a target callback.
+      main.post { if (layer.target === this && isWaiting(layer) && !released) failed() }
+    }
+
+    override fun onLoadCleared(placeholder: Drawable?) {
+      if (layer.target !== this) return
+      layer.drawable = null
+      invalidate()
+    }
+  }
+
+  /**
+   * Loads the placeholder for a pending source into an empty view, or one
+   * that shows a placeholder no longer wanted. A remote placeholder is
+   * answered from Glide's caches unless it may hit the network. Silent on
+   * failure.
+   *
+   * With a cacheKey, the largest cached variant of the source that is too
+   * small to stand in for it is the placeholder: it is the same picture.
+   * It wins over a remote `cache-only` placeholder, which is tried after
+   * it; a local or `network` placeholder is the app's explicit choice and
+   * is used alone.
    */
   private fun loadPlaceholder() {
     cancelPendingPlaceholder()
-    val src = placeholder
-    if (src.isNullOrEmpty()) {
-      current?.let { if (it.isPlaceholder) { releaseLayer(it); current = null; invalidate() } }
-      return
-    }
-    current?.let { if (it.isPlaceholder && it.request.source == src) return }
-    val request = request(src)
+    val explicit = placeholder?.takeIf { it.isNotEmpty() }
+    val explicitOnly = explicit != null &&
+      (Source.kindOf(explicit) != SourceKind.REMOTE || placeholderFromNetwork)
+    val src = source
+    val key = src?.let { variantKey(it) }
+    val smaller = if (key != null && !explicitOnly) variantChoice(key, src).smaller else emptyList()
 
-    val vector = TrueImageResources.vector(context, src)
-    if (vector != null) {
-      val layer = Layer(request, fromResource = true, isPlaceholder = true)
-      layer.drawable = vector.mutate()
-      pendingPlaceholder = layer
-      presentPlaceholder(layer)
-      return
-    }
-    val model = TrueImageRequests.model(context, src, placeholderHeaders) ?: return
-    val layer = Layer(request, fromResource = model is Int, isPlaceholder = true)
-    val target = object : CustomTarget<Drawable>() {
-      override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
-        if (pendingPlaceholder !== layer) return
-        layer.drawable = resource.mutate()
-        presentPlaceholder(layer)
+    if (smaller.isEmpty()) {
+      if (explicit == null) {
+        current?.let { if (it.isPlaceholder) { releaseLayer(it); current = null; invalidate() } }
+        return
       }
-
-      override fun onLoadFailed(errorDrawable: Drawable?) {
+      current?.let { if (it.isPlaceholder && it.shownSource == explicit) return }
+      val request = request(explicit)
+      val vector = TrueImageResources.vector(context, explicit)
+      if (vector != null) {
+        val layer = Layer(request, fromResource = true, isPlaceholder = true)
+        layer.drawable = vector.mutate()
+        pendingPlaceholder = layer
+        presentPlaceholder(layer)
+        return
+      }
+      val model = TrueImageRequests.model(context, explicit, placeholderHeaders) ?: return
+      val layer = Layer(request, fromResource = model is Int, isPlaceholder = true)
+      pendingPlaceholder = layer
+      val tier = if (!placeholderFromNetwork && Source.kindOf(explicit) == SourceKind.REMOTE) Tier.CACHE else Tier.NETWORK
+      run(layer, listOf(Attempt(explicit, request.size, tier, placeholderHeaders))) {
         if (pendingPlaceholder === layer) pendingPlaceholder = null
       }
-
-      override fun onLoadCleared(placeholder: Drawable?) {
-        layer.drawable = null
-        invalidate()
-      }
+      return
     }
-    layer.target = target
+
+    current?.let { shown ->
+      if (shown.isPlaceholder && (smaller.any { it.url == shown.shownSource } || shown.shownSource == explicit)) return
+    }
+    val attempts = ArrayList<Attempt>()
+    for (variant in smaller) attempts += Attempt(variant.url, request(variant.url).size, Tier.MEMORY, headers, key)
+    if (explicit != null) attempts += Attempt(explicit, request(explicit).size, Tier.MEMORY, placeholderHeaders)
+    for (variant in smaller) {
+      attempts += Attempt(variant.url, request(variant.url, reuse = false).size, Tier.CACHE, headers, key)
+    }
+    if (explicit != null) attempts += Attempt(explicit, request(explicit).size, Tier.CACHE, placeholderHeaders)
+    val first = attempts.first()
+    val layer = Layer(Request(first.source, first.size), fromResource = false, isPlaceholder = true)
     pendingPlaceholder = layer
-    val cacheOnly = !placeholderFromNetwork && Source.kindOf(src) == SourceKind.REMOTE
-    TrueImageRequests.drawable(TrueImageRequests.glide(context), model, request.size)
-      .onlyRetrieveFromCache(cacheOnly)
-      .into(target)
+    run(layer, attempts) {
+      if (pendingPlaceholder === layer) pendingPlaceholder = null
+    }
   }
 
   private fun cancelPending() {
@@ -431,15 +572,17 @@ class TrueImageView(context: Context) : View(context) {
   }
 
   /**
-   * A placeholder draws at once and only into a view that is still empty
-   * and still waiting; if the image got there first it is dropped unseen.
+   * A placeholder draws at once and only into a view that is still waiting
+   * and shows nothing but another placeholder; if the image got there first
+   * it is dropped unseen.
    */
   private fun showPlaceholder(layer: Layer) {
     pendingPlaceholder = null
-    if (current != null || pending == null) {
+    if (current?.isPlaceholder == false || pending == null) {
       releaseLayer(layer)
       return
     }
+    releaseLayer(current)
     crossfade = null
     current = layer
     layer.display?.alpha = 255
@@ -530,7 +673,8 @@ class TrueImageView(context: Context) : View(context) {
     }
   }
 
-  private fun blurSource(layer: Layer) = "${layer.request.source}:${layer.request.size}"
+  private fun blurSource(layer: Layer) =
+    layer.answer?.let { "${it.source}:${it.size}" } ?: "${layer.request.source}:${layer.request.size}"
 
   private fun effectiveBlur(layer: Layer): Float = blurRadius *
     ((layer.drawable as? BitmapDrawable)?.bitmap?.let { TrueImageDownsample.sourceScale(it) } ?: 1f)

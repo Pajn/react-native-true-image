@@ -30,14 +30,17 @@ class TrueImageModule(reactContext: ReactApplicationContext) : NativeTrueImageSp
       }
       val mode = FitMode.from(if (map.hasKey("resizeMode")) map.getString("resizeMode") else null)
       val size = TrueImageRequests.Size((w * density).roundToInt(), (h * density).roundToInt(), mode, threshold.toFloat())
-      parsed += TrueImagePrefetcher.Request(uri, headers, size)
+      val cacheKey = if (map.hasKey("cacheKey") && !map.isNull("cacheKey")) map.getString("cacheKey") else null
+      parsed += TrueImagePrefetcher.Request(uri, headers, size, cacheKey?.ifEmpty { null })
     }
     TrueImagePrefetcher.prefetch(reactApplicationContext, parsed) { ok -> promise.resolve(ok && allValid) }
   }
 
-  override fun getPixels(uri: String, size: Double, headers: ReadableArray?, promise: Promise) {
+  override fun getPixels(uri: String, size: Double, headers: ReadableArray?, cacheKey: String?, promise: Promise) {
     val side = if (size >= 1 && size <= TrueImagePixels.MAX_SIZE) size.toInt() else 0
-    TrueImagePixels.load(reactApplicationContext, uri, TrueImageHeaders.fromArray(headers), side) { promise.resolve(it) }
+    TrueImagePixels.load(reactApplicationContext, uri, TrueImageHeaders.fromArray(headers), side, cacheKey?.ifEmpty { null }) {
+      promise.resolve(it)
+    }
   }
 
   companion object {

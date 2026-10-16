@@ -9,7 +9,13 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 object TrueImagePrefetcher {
-  data class Request(val source: String, val headers: Map<String, String>? = null, val size: TrueImageRequests.Size = TrueImageRequests.Size())
+  data class Request(
+    val source: String,
+    val headers: Map<String, String>? = null,
+    val size: TrueImageRequests.Size = TrueImageRequests.Size(),
+    /** Registers the loaded image as a variant of this picture. See [TrueImageVariants]. */
+    val cacheKey: String? = null,
+  )
 
   /**
    * Prefetch batches usually race the mount work they are meant to feed, so
@@ -43,7 +49,9 @@ object TrueImagePrefetcher {
       }
       for ((request, future) in futures) {
         try {
-          TrueImageDecodeCache.record(request.source, request.size, future.get())
+          val drawable = future.get()
+          TrueImageDecodeCache.record(request.source, request.size, drawable)
+          request.cacheKey?.let { TrueImageVariants.record(context, it, request.source, drawable) }
         } catch (e: Exception) {
           ok = false
         }

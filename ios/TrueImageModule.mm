@@ -52,6 +52,8 @@ static NSDictionary<NSString *, NSString *> *HeadersFromList(id list)
     }
     parsedRequest.pixelSize = CGSizeMake(round(w * UIScreen.mainScreen.scale), round(h * UIScreen.mainScreen.scale));
     parsedRequest.downsampleThreshold = threshold;
+    id cacheKey = request[@"cacheKey"];
+    parsedRequest.cacheKey = [cacheKey isKindOfClass:NSString.class] && [cacheKey length] > 0 ? cacheKey : nil;
     NSString *mode = request[@"resizeMode"];
     parsedRequest.fitMode = [mode isEqualToString:@"contain"] ? TrueImageFitModeContain :
       [mode isEqualToString:@"stretch"] ? TrueImageFitModeStretch :
@@ -67,6 +69,7 @@ static NSDictionary<NSString *, NSString *> *HeadersFromList(id list)
 - (void)getPixels:(NSString *)uri
              size:(double)size
           headers:(NSArray *)headers
+         cacheKey:(NSString *)cacheKey
           resolve:(RCTPromiseResolveBlock)resolve
            reject:(RCTPromiseRejectBlock)reject
 {
@@ -75,6 +78,7 @@ static NSDictionary<NSString *, NSString *> *HeadersFromList(id list)
   [TrueImagePixels loadSource:uri
                       headers:HeadersFromList(headers)
                          size:side
+                     cacheKey:[cacheKey isKindOfClass:NSString.class] && cacheKey.length > 0 ? cacheKey : nil
                    completion:^(NSData *rgba) {
                      resolve([rgba base64EncodedStringWithOptions:0]);
                    }];

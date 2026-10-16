@@ -12,6 +12,8 @@ typedef void (^TrueImageLoadCompletion)(UIImage *_Nullable image, BOOL fromMemor
 @property (nonatomic) TrueImageFitMode fitMode;
 @property (nonatomic) CGFloat downsampleThreshold;
 @property (nonatomic, copy, nullable) NSDictionary<NSString *, NSString *> *headers;
+/// Registers the loaded image as a variant of this picture. See TrueImageVariants.
+@property (nonatomic, copy, nullable) NSString *cacheKey;
 + (instancetype)requestWithURL:(NSURL *)url headers:(nullable NSDictionary<NSString *, NSString *> *)headers;
 @end
 
@@ -46,6 +48,28 @@ typedef void (^TrueImageLoadCompletion)(UIImage *_Nullable image, BOOL fromMemor
                fitMode:(TrueImageFitMode)fitMode
    downsampleThreshold:(CGFloat)threshold
             completion:(TrueImageLoadCompletion)completion;
+
+/// As above, and a loaded image is recorded as a variant of the picture
+/// `cacheKey` names, at the URL's full pixel size when the decode tells it.
++ (nullable id)loadURL:(NSURL *)url
+            blurRadius:(CGFloat)blurRadius
+         blurDownscale:(CGFloat)blurDownscale
+               headers:(nullable NSDictionary<NSString *, NSString *> *)headers
+             cacheOnly:(BOOL)cacheOnly
+             pixelSize:(CGSize)pixelSize
+               fitMode:(TrueImageFitMode)fitMode
+   downsampleThreshold:(CGFloat)threshold
+              cacheKey:(nullable NSString *)cacheKey
+            completion:(TrueImageLoadCompletion)completion;
+
+/// Whether the request `loadURL:` would make is a memory hit, without
+/// starting it. Headers are not part of the key.
++ (BOOL)isInMemoryURL:(NSURL *)url
+           blurRadius:(CGFloat)blurRadius
+        blurDownscale:(CGFloat)blurDownscale
+            pixelSize:(CGSize)pixelSize
+              fitMode:(TrueImageFitMode)fitMode
+  downsampleThreshold:(CGFloat)threshold;
 
 /// Reuses a memory-cached variant with adequate resolution and within the threshold.
 + (CGSize)compatiblePixelSizeForURL:(NSURL *)url pixelSize:(CGSize)pixelSize fitMode:(TrueImageFitMode)fitMode

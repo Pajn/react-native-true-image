@@ -43,6 +43,18 @@ BOOL TrueImageThumbnailPixelSize(
   return YES;
 }
 
+BOOL TrueImageVariantSuffices(CGSize imagePixels, CGSize viewPixels, TrueImageFitMode mode)
+{
+  if (imagePixels.width <= 0 || imagePixels.height <= 0 || viewPixels.width <= 0 || viewPixels.height <= 0 ||
+      mode == TrueImageFitModeCenter) {
+    return NO;
+  }
+  CGFloat sx = viewPixels.width / imagePixels.width;
+  CGFloat sy = viewPixels.height / imagePixels.height;
+  CGFloat scale = mode == TrueImageFitModeContain ? MIN(sx, sy) : MAX(sx, sy);
+  return scale <= 1;
+}
+
 NSString *TrueImageThumbnailKey(NSString *source, CGFloat blurRadius, CGFloat blurDownscale, CGSize pixelSize)
 {
   return [NSString stringWithFormat:@"%@|b%g|d%g|%dx%d",

@@ -5,6 +5,7 @@
 #import "TrueImageBlurTransformer.h"
 #import "TrueImageDownsample.h"
 #import "TrueImagePolicy.h"
+#import "TrueImageVariants.h"
 #import "TrueImageWebPCoder.h"
 
 /// `.retryFailed` keeps a URL that failed once (a 404 during a network
@@ -132,6 +133,19 @@ static void RecordVariant(NSURL *url, SDWebImageContext *context, UIImage *image
   }
 }
 
+/// The full pixel size of the URL behind `image`: what the downsampling
+/// coder read from the headers, or the image itself when nothing shrank it.
+/// Zero when neither is known, as for a memory hit of a reduced variant.
+static CGSize SourcePixels(SDWebImageContext *context, UIImage *image, CGFloat blurRadius)
+{
+  TrueImageDownsample *policy = context[SDWebImageContextImageCoder];
+  if ([policy isKindOfClass:TrueImageDownsample.class]) {
+    return policy.originalPixels;
+  }
+  if (blurRadius > 0) return CGSizeZero;
+  return CGSizeMake(image.size.width * image.scale, image.size.height * image.scale);
+}
+
 @implementation TrueImageLoader
 
 + (void)configureOnce
@@ -166,6 +180,21 @@ static void RecordVariant(NSURL *url, SDWebImageContext *context, UIImage *image
  downsampleThreshold:(CGFloat)threshold
      completion:(TrueImageLoadCompletion)completion
 {
+  return [self loadURL:url blurRadius:blurRadius blurDownscale:blurDownscale headers:headers cacheOnly:cacheOnly
+             pixelSize:pixelSize fitMode:fitMode downsampleThreshold:threshold cacheKey:nil completion:completion];
+}
+
++ (id)loadURL:(NSURL *)url
+     blurRadius:(CGFloat)blurRadius
+  blurDownscale:(CGFloat)blurDownscale
+        headers:(NSDictionary<NSString *, NSString *> *)headers
+      cacheOnly:(BOOL)cacheOnly
+      pixelSize:(CGSize)pixelSize
+        fitMode:(TrueImageFitMode)fitMode
+ downsampleThreshold:(CGFloat)threshold
+       cacheKey:(NSString *)cacheKey
+     completion:(TrueImageLoadCompletion)completion
+{
   SDWebImageContext *context = ContextFor(blurRadius, blurDownscale, headers, pixelSize, fitMode, threshold);
   return [Manager()
        loadImageWithURL:url
@@ -177,8 +206,26 @@ static void RecordVariant(NSURL *url, SDWebImageContext *context, UIImage *image
                   return;
                 }
                 RecordVariant(url, context, image);
+                if (image && cacheKey.length > 0) {
+                  CGSize pixels = SourcePixels(context, image, blurRadius);
+                  if (pixels.width > 0) {
+                    [TrueImageVariants recordURL:url.absoluteString pixelSize:pixels forKey:cacheKey];
+                  }
+                }
                 completion(image, cacheType == SDImageCacheTypeMemory, error.localizedDescription);
               }];
+}
+
++ (BOOL)isInMemoryURL:(NSURL *)url
+           blurRadius:(CGFloat)blurRadius
+        blurDownscale:(CGFloat)blurDownscale
+            pixelSize:(CGSize)pixelSize
+              fitMode:(TrueImageFitMode)fitMode
+  downsampleThreshold:(CGFloat)threshold
+{
+  SDWebImageContext *context = ContextFor(blurRadius, blurDownscale, nil, pixelSize, fitMode, threshold);
+  NSString *key = [Manager() cacheKeyForURL:url context:context];
+  return [SDImageCache.sharedImageCache imageFromMemoryCacheForKey:key] != nil;
 }
 
 + (CGSize)compatiblePixelSizeForURL:(NSURL *)url pixelSize:(CGSize)pixelSize fitMode:(TrueImageFitMode)fitMode
@@ -230,6 +277,7 @@ static void RecordVariant(NSURL *url, SDWebImageContext *context, UIImage *image
   for (TrueImagePrefetchRequest *request in requests) {
     [self loadURL:request.url blurRadius:0 blurDownscale:1 headers:request.headers cacheOnly:NO
          pixelSize:request.pixelSize fitMode:request.fitMode downsampleThreshold:request.downsampleThreshold
+          cacheKey:request.cacheKey
         completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
           if (!image) ok = NO;
           if (++finishedCount == total) completion(ok);

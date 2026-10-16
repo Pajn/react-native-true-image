@@ -179,6 +179,23 @@ object Blur {
   }
 }
 
+object Variants {
+  /**
+   * Whether an image of [width] × [height] pixels fills a view needing
+   * [viewWidth] × [viewHeight] pixels in [mode] without being upscaled:
+   * `cover` and `stretch` on both axes, `contain` on the axis it fits by.
+   * Never for `center`, which draws images at their own size, or for a view
+   * without a size.
+   */
+  fun suffices(width: Int, height: Int, viewWidth: Int, viewHeight: Int, mode: FitMode): Boolean {
+    if (width <= 0 || height <= 0 || viewWidth <= 0 || viewHeight <= 0 || mode == FitMode.CENTER) return false
+    val sx = viewWidth.toFloat() / width
+    val sy = viewHeight.toFloat() / height
+    val scale = if (mode == FitMode.CONTAIN) min(sx, sy) else max(sx, sy)
+    return scale <= 1f
+  }
+}
+
 enum class SourceKind { REMOTE, RESOURCE, URI }
 
 object Source {

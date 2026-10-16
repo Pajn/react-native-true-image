@@ -36,6 +36,12 @@ FOUNDATION_EXPORT BOOL TrueImageThumbnailPixelSize(
 FOUNDATION_EXPORT CGSize TrueImageDecodePixelSize(
     CGSize originalPixels, CGSize displayPixels, TrueImageFitMode mode, CGFloat threshold);
 
+/// Whether an image of `imagePixels` fills a view of `viewPixels` in `mode`
+/// without being upscaled: cover and stretch on both axes, contain on the
+/// axis it fits by. Never for center, which draws images at their own size,
+/// or for a view without a size.
+FOUNDATION_EXPORT BOOL TrueImageVariantSuffices(CGSize imagePixels, CGSize viewPixels, TrueImageFitMode mode);
+
 /// Cache key for a resampled thumbnail. Varies with the source, the blur and
 /// the target size so a resize or a blur change never reuses a stale one.
 FOUNDATION_EXPORT NSString *TrueImageThumbnailKey(

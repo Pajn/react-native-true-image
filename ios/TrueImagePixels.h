@@ -12,11 +12,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// The image stretched to `size` × `size` as row-major RGBA bytes, 8-bit and
 /// not premultiplied, or nil if it could not be loaded or decoded. Scheme-less
-/// sources name an asset catalog image. The completion runs on a background
+/// sources name an asset catalog image. With a `cacheKey`, a cached variant of
+/// the picture is sampled instead of fetching `source`: the smallest that
+/// covers the sample, else the largest. The completion runs on a background
 /// queue.
 + (void)loadSource:(NSString *)source
            headers:(nullable NSDictionary<NSString *, NSString *> *)headers
               size:(NSUInteger)size
+          cacheKey:(nullable NSString *)cacheKey
         completion:(void (^)(NSData *_Nullable rgba))completion;
 
 /// Draws the image stretched over `size` × `size` and reads it back.

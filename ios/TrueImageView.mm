@@ -2,8 +2,12 @@
 
 #import <QuartzCore/QuartzCore.h>
 
+#import <memory>
+#import <vector>
+
 #import "TrueImageLoader.h"
 #import "TrueImageResources.h"
+#import "TrueImageVariants.h"
 
 static NSString *const kFadeKey = @"fade";
 
@@ -28,6 +32,29 @@ struct TrueImageRequest {
 };
 
 enum class TrueImageKind { None, Bitmap, Resource };
+
+/// Where an attempt may be answered from.
+enum class TrueImageTier {
+  /// The memory cache alone; checked synchronously and skipped on a miss.
+  Memory,
+  /// The memory and disk caches, never the network.
+  Cache,
+  /// Anywhere, the network included.
+  Network,
+};
+
+/// One request that may answer a load. A load's attempts run in order
+/// until one succeeds; for a source with a cacheKey they include other URLs
+/// of the same picture.
+struct TrueImageAttempt {
+  TrueImageRequest request;
+  TrueImageTier tier;
+  NSDictionary<NSString *, NSString *> *headers;
+  /// Recorded in TrueImageVariants when this attempt succeeds.
+  NSString *cacheKey;
+};
+
+using TrueImageAttempts = std::shared_ptr<const std::vector<TrueImageAttempt>>;
 
 /// Runs the fade's completion. Reports `finished == NO` when a newer fade
 /// replaced this one so the interrupted image stays silent.
@@ -56,6 +83,8 @@ enum class TrueImageKind { None, Bitmap, Resource };
   id _pendingToken;
 
   id _placeholderToken;
+  /// Bumped whenever a placeholder load is abandoned or replaced.
+  NSUInteger _placeholderGeneration;
   /// The layer shows the placeholder; `_loadedKind` stays None.
   BOOL _placeholderShown;
   TrueImageRequest _placeholderRequest;
@@ -232,6 +261,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
   }
   _source = nil;
   _headers = nil;
+  _cacheKey = nil;
   _recyclingKey = nil;
   _appliedRecyclingKey = nil;
   _transition = 0;
@@ -281,92 +311,265 @@ enum class TrueImageKind { None, Bitmap, Resource };
   }
 
   [TrueImageLoader configureOnce];
-  __weak __typeof(self) weakSelf = self;
-  id token = [TrueImageLoader loadURL:url
-                           blurRadius:request.blurRadius
-                        blurDownscale:request.blurDownscale
-                              headers:_headers
-                            cacheOnly:NO
-                            pixelSize:request.pixelSize
-                              fitMode:request.fitMode
-                  downsampleThreshold:request.threshold
-                           completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
-                             __typeof(self) self = weakSelf;
-                             // A load superseded by a newer source is silent: no onError, no image.
-                             if (!self || self->_generation != gen) {
-                               return;
-                             }
-                             self->_hasPending = NO;
-                             self->_pendingToken = nil;
-                             if (image) {
-                               [self show:image request:request fromMemory:fromMemory];
-                             } else if (self->_onError) {
-                               self->_onError(error ?: @"Failed to load image", request.source);
-                             }
-                           }];
-  // A memory hit completes synchronously inside loadURL; only track
-  // operations that are still in flight.
-  if (_generation == gen && !(_loadedKind != TrueImageKind::None && _loadedRequest == request)) {
-    _hasPending = YES;
-    _pendingRequest = request;
-    _pendingToken = token;
-    // Only an empty view gets a placeholder; a displayed image stays up
-    // until its replacement arrives.
-    if (_loadedKind == TrueImageKind::None) {
-      [self loadPlaceholder];
+  // Pending before the first attempt starts: a memory hit completes inside
+  // it and clears this again.
+  _hasPending = YES;
+  _pendingRequest = request;
+  [self run:[self attemptsFor:request] from:0 request:request generation:gen];
+  // Only an empty view gets a placeholder; a displayed image stays up
+  // until its replacement arrives.
+  if (_generation == gen && _hasPending && _loadedKind == TrueImageKind::None) {
+    [self loadPlaceholder];
+  }
+}
+
+/// The requests that may answer `request`, in order. With a cacheKey and
+/// variants big enough for this view, memory is checked for the URL and
+/// then each variant before anything touches the disk, then the disk cache
+/// likewise, and only then the network for the URL itself.
+- (TrueImageAttempts)attemptsFor:(TrueImageRequest)request
+{
+  auto attempts = std::make_shared<std::vector<TrueImageAttempt>>();
+  NSString *key = [self variantKeyFor:request.source];
+  NSArray<TrueImageVariant *> *sufficient = key ? [self variantChoiceFor:key source:request.source].sufficient : @[];
+  if (sufficient.count > 0) {
+    attempts->push_back({request, TrueImageTier::Memory, _headers, key});
+    for (TrueImageVariant *variant in sufficient) {
+      attempts->push_back({[self requestForSource:variant.url], TrueImageTier::Memory, _headers, key});
     }
+    attempts->push_back({request, TrueImageTier::Cache, _headers, key});
+    for (TrueImageVariant *variant in sufficient) {
+      attempts->push_back({[self requestForSource:variant.url], TrueImageTier::Cache, _headers, key});
+    }
+  }
+  attempts->push_back({request, TrueImageTier::Network, _headers, key});
+  return attempts;
+}
+
+/// The cacheKey to use for `source`, or nil when it takes no part in variant reuse.
+- (NSString *)variantKeyFor:(NSString *)source
+{
+  if (_cacheKey.length == 0 || _fitMode == TrueImageFitModeCenter || !TrueImageURLFromSource(source)) {
+    return nil;
+  }
+  return _cacheKey;
+}
+
+- (TrueImageVariantChoice *)variantChoiceFor:(NSString *)key source:(NSString *)source
+{
+  CGFloat scale = [self displayScale];
+  CGSize pixels = CGSizeMake(round(self.bounds.size.width * scale), round(self.bounds.size.height * scale));
+  return [TrueImageVariants choose:[TrueImageVariants variantsForKey:key]
+                         excluding:source
+                        viewPixels:pixels
+                           fitMode:_fitMode];
+}
+
+/// Starts the first attempt from `index` that can run. A memory attempt
+/// that is not in memory is skipped without a request, so a memory hit
+/// anywhere in the list completes inside this call, just as an exact hit
+/// does. Returns the operation, or nil when nothing was left to start.
+- (id)start:(TrueImageAttempts)attempts
+         from:(size_t)index
+    completion:(void (^)(size_t attempt, UIImage *image, BOOL fromMemory, NSString *error))completion
+{
+  for (size_t i = index; i < attempts->size(); i++) {
+    const TrueImageAttempt &attempt = (*attempts)[i];
+    NSURL *url = TrueImageURLFromSource(attempt.request.source);
+    if (!url) {
+      continue;
+    }
+    if (attempt.tier == TrueImageTier::Memory &&
+        ![TrueImageLoader isInMemoryURL:url
+                             blurRadius:attempt.request.blurRadius
+                          blurDownscale:attempt.request.blurDownscale
+                              pixelSize:attempt.request.pixelSize
+                                fitMode:attempt.request.fitMode
+                    downsampleThreshold:attempt.request.threshold]) {
+      continue;
+    }
+    return [TrueImageLoader loadURL:url
+                         blurRadius:attempt.request.blurRadius
+                      blurDownscale:attempt.request.blurDownscale
+                            headers:attempt.headers
+                          cacheOnly:attempt.tier != TrueImageTier::Network
+                          pixelSize:attempt.request.pixelSize
+                            fitMode:attempt.request.fitMode
+                downsampleThreshold:attempt.request.threshold
+                           cacheKey:attempt.cacheKey
+                         completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
+                           completion(i, image, fromMemory, error);
+                         }];
+  }
+  completion(attempts->size(), nil, NO, nil);
+  return nil;
+}
+
+/// Forgets a variant the index promised but a cache-only lookup could not find.
+static void ForgetIfEvicted(const TrueImageAttempt &attempt, NSString *requested)
+{
+  if (attempt.tier == TrueImageTier::Cache && attempt.cacheKey &&
+      ![attempt.request.source isEqualToString:requested]) {
+    [TrueImageVariants forgetURL:attempt.request.source forKey:attempt.cacheKey];
+  }
+}
+
+/// Answers the pending load from the first of `attempts` that succeeds.
+/// The next attempt starts as each fails; the last failure is the load's.
+- (void)run:(TrueImageAttempts)attempts
+          from:(size_t)index
+       request:(TrueImageRequest)request
+    generation:(NSUInteger)gen
+{
+  __weak __typeof(self) weakSelf = self;
+  id token = [self start:attempts
+                    from:index
+              completion:^(size_t i, UIImage *image, BOOL fromMemory, NSString *error) {
+                __typeof(self) self = weakSelf;
+                // A load superseded by a newer source is silent: no onError, no image.
+                if (!self || self->_generation != gen) {
+                  return;
+                }
+                if (image) {
+                  self->_hasPending = NO;
+                  self->_pendingToken = nil;
+                  [self show:image request:request fromMemory:fromMemory];
+                  return;
+                }
+                if (i + 1 < attempts->size()) {
+                  ForgetIfEvicted((*attempts)[i], request.source);
+                  // Started outside SDWebImage's completion, which may still
+                  // be unwinding the failed operation.
+                  dispatch_async(dispatch_get_main_queue(), ^{
+                    __typeof(self) self = weakSelf;
+                    if (self && self->_generation == gen) {
+                      [self run:attempts from:i + 1 request:request generation:gen];
+                    }
+                  });
+                  return;
+                }
+                self->_hasPending = NO;
+                self->_pendingToken = nil;
+                if (self->_onError) {
+                  self->_onError(error ?: @"Failed to load image", request.source);
+                }
+              }];
+  // A memory hit completes synchronously inside the start; only track
+  // operations that are still in flight.
+  if (_generation == gen && _hasPending) {
+    _pendingToken = token;
   }
 }
 
 /// Loads the placeholder for a pending source into an empty view. A
-/// placeholder already showing is kept; a remote one is answered from the
-/// cache unless it may hit the network. Silent on failure.
+/// placeholder already showing is kept while it is still wanted; a remote
+/// one is answered from the cache unless it may hit the network. Silent on
+/// failure.
+///
+/// With a cacheKey, the largest cached variant of the source that is too
+/// small to stand in for it is the placeholder: it is the same picture. It
+/// wins over a remote cache-only placeholder, which is tried after it; a
+/// local or network placeholder is the app's explicit choice and is used
+/// alone.
 - (void)loadPlaceholder
 {
+  // Bump first, as in cancelPending.
+  _placeholderGeneration++;
   [TrueImageLoader cancel:_placeholderToken];
   _placeholderToken = nil;
-  if (_placeholder.length == 0) {
+  NSString *explicitSource = _placeholder.length > 0 ? _placeholder : nil;
+  NSURL *explicitURL = explicitSource ? TrueImageURLFromSource(explicitSource) : nil;
+  BOOL explicitRemote = [explicitURL.scheme hasPrefix:@"http"];
+  BOOL explicitOnly = explicitSource && (!explicitRemote || _placeholderFromNetwork);
+  NSString *key = _source.length > 0 && !explicitOnly ? [self variantKeyFor:_source] : nil;
+  NSArray<TrueImageVariant *> *smaller = key ? [self variantChoiceFor:key source:_source].smaller : @[];
+  auto attempts = std::make_shared<std::vector<TrueImageAttempt>>();
+
+  if (smaller.count == 0) {
+    if (!explicitSource) {
+      if (_placeholderShown) {
+        [self dropPlaceholder];
+        _imageLayer.contents = nil;
+      }
+      return;
+    }
+    TrueImageRequest request = [self requestForSource:explicitSource];
+    if (_placeholderShown && _placeholderRequest == request) {
+      return;
+    }
+    if (!explicitURL) {
+      UIImage *image = [TrueImageResources imageNamed:explicitSource traits:self.traitCollection];
+      if (image) {
+        [self showPlaceholder:image request:request isResource:YES];
+      }
+      return;
+    }
+    TrueImageTier tier = explicitRemote && !_placeholderFromNetwork ? TrueImageTier::Cache : TrueImageTier::Network;
+    attempts->push_back({request, tier, _placeholderHeaders, nil});
+  } else {
     if (_placeholderShown) {
-      [self dropPlaceholder];
-      _imageLayer.contents = nil;
+      for (TrueImageVariant *variant in smaller) {
+        if ([variant.url isEqualToString:_placeholderRequest.source]) {
+          return;
+        }
+      }
+      if ([explicitSource isEqualToString:_placeholderRequest.source]) {
+        return;
+      }
     }
-    return;
-  }
-  TrueImageRequest request = [self requestForSource:_placeholder];
-  if (_placeholderShown && _placeholderRequest == request) {
-    return;
-  }
-  NSURL *url = TrueImageURLFromSource(_placeholder);
-  if (!url) {
-    UIImage *image = [TrueImageResources imageNamed:_placeholder traits:self.traitCollection];
-    if (image) {
-      [self showPlaceholder:image request:request isResource:YES];
+    for (TrueImageVariant *variant in smaller) {
+      attempts->push_back({[self requestForSource:variant.url], TrueImageTier::Memory, _headers, key});
     }
-    return;
+    if (explicitSource) {
+      attempts->push_back({[self requestForSource:explicitSource], TrueImageTier::Memory, _placeholderHeaders, nil});
+    }
+    for (TrueImageVariant *variant in smaller) {
+      attempts->push_back({[self requestForSource:variant.url], TrueImageTier::Cache, _headers, key});
+    }
+    if (explicitSource) {
+      attempts->push_back({[self requestForSource:explicitSource], TrueImageTier::Cache, _placeholderHeaders, nil});
+    }
   }
   [TrueImageLoader configureOnce];
-  BOOL remote = [url.scheme hasPrefix:@"http"];
+  [self runPlaceholder:attempts from:0];
+}
+
+- (void)runPlaceholder:(TrueImageAttempts)attempts from:(size_t)index
+{
   NSUInteger gen = _generation;
+  NSUInteger placeholderGen = _placeholderGeneration;
+  NSString *requested = _source;
   __weak __typeof(self) weakSelf = self;
-  _placeholderToken = [TrueImageLoader loadURL:url
-                                    blurRadius:request.blurRadius
-                                 blurDownscale:request.blurDownscale
-                                       headers:_placeholderHeaders
-                                     cacheOnly:remote && !_placeholderFromNetwork
-                                     pixelSize:request.pixelSize
-                                       fitMode:request.fitMode
-                           downsampleThreshold:request.threshold
-                                    completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
-                                      __typeof(self) self = weakSelf;
-                                      // Stale once the image arrived or the source moved on.
-                                      if (!self || self->_generation != gen || self->_loadedKind != TrueImageKind::None) {
-                                        return;
-                                      }
-                                      self->_placeholderToken = nil;
-                                      if (image) {
-                                        [self showPlaceholder:image request:request isResource:NO];
-                                      }
-                                    }];
+  BOOL (^stale)(__typeof(self)) = ^BOOL(__typeof(self) self) {
+    // Stale once the image arrived, the source moved on or another placeholder was asked for.
+    return !self || self->_generation != gen || self->_placeholderGeneration != placeholderGen ||
+        self->_loadedKind != TrueImageKind::None;
+  };
+  id token = [self start:attempts
+                    from:index
+              completion:^(size_t i, UIImage *image, BOOL fromMemory, NSString *error) {
+                __typeof(self) self = weakSelf;
+                if (stale(self)) {
+                  return;
+                }
+                self->_placeholderToken = nil;
+                if (image) {
+                  [self showPlaceholder:image request:(*attempts)[i].request isResource:NO];
+                  return;
+                }
+                if (i + 1 < attempts->size()) {
+                  ForgetIfEvicted((*attempts)[i], requested);
+                  dispatch_async(dispatch_get_main_queue(), ^{
+                    __typeof(self) self = weakSelf;
+                    if (!stale(self)) {
+                      [self runPlaceholder:attempts from:i + 1];
+                    }
+                  });
+                }
+              }];
+  if (!stale(self)) {
+    _placeholderToken = token;
+  }
 }
 
 - (void)showPlaceholder:(UIImage *)image request:(TrueImageRequest)request isResource:(BOOL)isResource
@@ -403,6 +606,7 @@ enum class TrueImageKind { None, Bitmap, Resource };
 /// what replaces its contents.
 - (void)dropPlaceholder
 {
+  _placeholderGeneration++;
   [TrueImageLoader cancel:_placeholderToken];
   _placeholderToken = nil;
   _placeholderShown = NO;

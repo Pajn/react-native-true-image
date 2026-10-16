@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
+import com.bumptech.glide.request.FutureTarget
 import android.util.Base64
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -25,10 +26,19 @@ object TrueImagePixels {
 
   /**
    * Resolves base64 RGBA bytes of the image stretched to `size` × `size`, or
-   * null if it could not be loaded or decoded. The callback runs on a
-   * background thread.
+   * null if it could not be loaded or decoded. With a [cacheKey], a cached
+   * variant of the picture is sampled instead of fetching [source]: the
+   * smallest that covers the sample, else the largest. The callback runs on
+   * a background thread.
    */
-  fun load(context: Context, source: String, headers: Map<String, String>?, size: Int, done: (String?) -> Unit) {
+  fun load(
+    context: Context,
+    source: String,
+    headers: Map<String, String>?,
+    size: Int,
+    cacheKey: String? = null,
+    done: (String?) -> Unit,
+  ) {
     if (size !in 1..MAX_SIZE) {
       done(null)
       return
@@ -39,23 +49,45 @@ object TrueImagePixels {
         done(encode(rgba(vector, size)))
         return@execute
       }
-      val model = TrueImageRequests.model(context, source, headers)
-      if (model == null) {
+      if (TrueImageRequests.model(context, source, headers) == null) {
         done(null)
         return@execute
       }
       val glide = TrueImageRequests.glide(context)
+      val futures = ArrayList<FutureTarget<Drawable>>()
       // Decoded near the sample size like a view of that size would be. A
       // software bitmap, since a hardware one cannot be drawn on a Canvas.
-      val future = TrueImageRequests.drawable(glide, model, TrueImageRequests.Size(size, size, FitMode.COVER, 1f))
-        .disallowHardwareConfig()
-        .submit()
-      val result = try {
-        encode(rgba(future.get(), size))
-      } catch (e: Exception) {
-        null
+      fun fetch(url: String, cacheOnly: Boolean): Drawable? {
+        val model = TrueImageRequests.model(context, url, headers) ?: return null
+        val future = TrueImageRequests.drawable(glide, model, TrueImageRequests.Size(size, size, FitMode.COVER, 1f))
+          .disallowHardwareConfig()
+          .onlyRetrieveFromCache(cacheOnly)
+          .submit()
+        futures += future
+        val drawable = try {
+          future.get()
+        } catch (e: Exception) {
+          null
+        }
+        if (drawable != null && cacheKey != null) TrueImageVariants.record(context, cacheKey, url, drawable)
+        return drawable
       }
-      Handler(Looper.getMainLooper()).post { glide.clear(future) }
+
+      var drawable: Drawable? = null
+      val variants = cacheKey?.let {
+        TrueImageVariants.choose(TrueImageVariants.variants(context, it), source, size, size, FitMode.COVER)
+      }
+      if (variants != null && (variants.sufficient.isNotEmpty() || variants.smaller.isNotEmpty())) {
+        drawable = fetch(source, cacheOnly = true)
+        for (variant in variants.sufficient + variants.smaller) {
+          if (drawable != null) break
+          drawable = fetch(variant.url, cacheOnly = true)
+          if (drawable == null) TrueImageVariants.forget(context, cacheKey, variant.url)
+        }
+      }
+      if (drawable == null) drawable = fetch(source, cacheOnly = false)
+      val result = drawable?.let { encode(rgba(it, size)) }
+      Handler(Looper.getMainLooper()).post { for (future in futures) glide.clear(future) }
       done(result)
     }
   }

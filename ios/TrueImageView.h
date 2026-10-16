@@ -14,6 +14,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *source;
 /// Sent with remote requests. Not part of the cache key.
 @property (nonatomic, copy, nullable) NSDictionary<NSString *, NSString *> *headers;
+/// URLs sharing a cache key are one picture at different sizes: a cached
+/// variant big enough for the view is shown instead of fetching `source`,
+/// and a smaller one stands in while it loads. See TrueImageVariants.
+@property (nonatomic, copy, nullable) NSString *cacheKey;
 @property (nonatomic, assign) TrueImageFitMode fitMode;
 @property (nonatomic, assign) CGFloat downsampleThreshold;
 /// Fade duration in milliseconds.

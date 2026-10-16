@@ -3,6 +3,7 @@
 #import "TrueImageLoader.h"
 #import "TrueImagePolicy.h"
 #import "TrueImageResources.h"
+#import "TrueImageVariants.h"
 
 @implementation TrueImagePixels
 
@@ -14,6 +15,7 @@
 + (void)loadSource:(NSString *)source
            headers:(NSDictionary<NSString *, NSString *> *)headers
               size:(NSUInteger)size
+          cacheKey:(NSString *)cacheKey
         completion:(void (^)(NSData *))completion
 {
   dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
@@ -29,16 +31,55 @@
     });
     return;
   }
+  // The source itself from cache, then each cached variant, then the
+  // network for the source; without a variant, straight to the last.
+  NSMutableArray<NSURL *> *cached = [NSMutableArray new];
+  if (cacheKey.length > 0) {
+    TrueImageVariantChoice *choice = [TrueImageVariants choose:[TrueImageVariants variantsForKey:cacheKey]
+                                                     excluding:source
+                                                    viewPixels:CGSizeMake(size, size)
+                                                       fitMode:TrueImageFitModeCover];
+    for (TrueImageVariant *variant in [choice.sufficient arrayByAddingObjectsFromArray:choice.smaller]) {
+      NSURL *variantURL = TrueImageURLFromSource(variant.url);
+      if (variantURL) [cached addObject:variantURL];
+    }
+    if (cached.count > 0) [cached insertObject:url atIndex:0];
+  }
+  [self sample:url cached:cached index:0 headers:headers size:size cacheKey:cacheKey queue:queue completion:completion];
+}
+
++ (void)sample:(NSURL *)url
+        cached:(NSArray<NSURL *> *)cached
+         index:(NSUInteger)index
+       headers:(NSDictionary<NSString *, NSString *> *)headers
+          size:(NSUInteger)size
+      cacheKey:(NSString *)cacheKey
+         queue:(dispatch_queue_t)queue
+    completion:(void (^)(NSData *))completion
+{
+  BOOL fromCache = index < cached.count;
+  NSURL *attempt = fromCache ? cached[index] : url;
   // Decoded near the sample size like a view of that size would be.
-  [TrueImageLoader loadURL:url
+  [TrueImageLoader loadURL:attempt
                 blurRadius:0
              blurDownscale:1
                    headers:headers
-                 cacheOnly:NO
+                 cacheOnly:fromCache
                  pixelSize:CGSizeMake(size, size)
                    fitMode:TrueImageFitModeCover
        downsampleThreshold:1
+                  cacheKey:cacheKey
                 completion:^(UIImage *image, BOOL fromMemory, NSString *error) {
+                  if (!image && fromCache) {
+                    if (![attempt isEqual:url]) {
+                      [TrueImageVariants forgetURL:attempt.absoluteString forKey:cacheKey];
+                    }
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                      [self sample:url cached:cached index:index + 1 headers:headers size:size cacheKey:cacheKey
+                             queue:queue completion:completion];
+                    });
+                    return;
+                  }
                   dispatch_async(queue, ^{
                     completion(image ? [self rgbaFromImage:image size:size] : nil);
                   });

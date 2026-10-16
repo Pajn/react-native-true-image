@@ -101,6 +101,7 @@ static TrueImageFitMode TrueImageFitModeFromProp(TrueImageViewResizeMode mode)
     }
     _view.headers = headers;
   }
+  _view.cacheKey = newProps.cacheKey.empty() ? nil : RCTNSStringFromString(newProps.cacheKey);
   _view.fitMode = TrueImageFitModeFromProp(newProps.resizeMode);
   _view.downsampleThreshold = newProps.downsampleThreshold;
   _view.transition = newProps.transition;

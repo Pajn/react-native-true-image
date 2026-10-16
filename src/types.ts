@@ -5,6 +5,15 @@ export interface ImageURISource {
   uri: string;
   /** Sent with the request. Not part of the cache key. */
   headers?: Record<string, string>;
+  /**
+   * Names the picture this URL shows. URLs that share a cache key are the
+   * same picture at different resolutions, such as one image proxied at
+   * several sizes. A view shows a cached variant that is large enough
+   * instead of fetching `uri`, and shows a smaller cached one while `uri`
+   * loads. Prefetches register their variant; `getColors` samples a cached
+   * variant without fetching.
+   */
+  cacheKey?: string;
 }
 
 /**
@@ -70,7 +79,10 @@ export type ResizeMode = 'cover' | 'contain' | 'stretch' | 'center';
 export type PlaceholderPolicy = 'cache-only' | 'network';
 
 export interface ImageLoadEvent {
-  /** Decoded width in pixels. */
+  /**
+   * Decoded width in pixels. For a source with a `cacheKey` this may be a
+   * reused variant of the picture, whose size differs from the URL's.
+   */
   width: number;
   /** Decoded height in pixels. */
   height: number;
@@ -122,6 +134,8 @@ export interface ImageProps extends ViewProps {
    * after `source` was cleared. A displayed image is never replaced by a
    * placeholder while its successor loads. It draws at once, never fades in,
    * and reports no events; `onLoad` and friends describe `source` alone.
+   * When `source` has a `cacheKey` and a smaller variant of it is cached,
+   * that variant is preferred over a remote `cache-only` placeholder.
    */
   placeholder?: ImageSource;
   /**

@@ -34,6 +34,11 @@ export interface NativeProps extends ViewProps {
   downsampleThreshold?: CodegenTypes.WithDefault<CodegenTypes.Float, 2>;
   /** Request headers for remote sources. Not part of the cache key. */
   headers?: ReadonlyArray<Header>;
+  /**
+   * Names the picture `source` shows; URLs sharing it are the same picture
+   * at different resolutions and stand in for each other.
+   */
+  cacheKey?: string;
   resizeMode?: CodegenTypes.WithDefault<
     'cover' | 'contain' | 'stretch' | 'center',
     'cover'

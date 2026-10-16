@@ -7,6 +7,8 @@ export type NativePrefetchRequest = Readonly<{
   resizeMode?: string;
   downsampleThreshold?: number;
   headers?: ReadonlyArray<Readonly<{ name: string; value: string }>>;
+  /** Registers the loaded image as a variant of the picture this key names. */
+  cacheKey?: string;
 }>;
 
 export interface Spec extends TurboModule {
@@ -20,12 +22,14 @@ export interface Spec extends TurboModule {
    * Decodes the image through the same pipeline and cache as a view, scales
    * it to `size` × `size` and resolves its pixels as base64: 8-bit RGBA, not
    * premultiplied, row-major. Resolves null if it could not be loaded or
-   * decoded, or if `size` is not between 1 and 256.
+   * decoded, or if `size` is not between 1 and 256. With a `cacheKey`, a
+   * cached variant of the picture is sampled instead of fetching `uri`.
    */
   getPixels(
     uri: string,
     size: number,
-    headers?: ReadonlyArray<Readonly<{ name: string; value: string }>>
+    headers?: ReadonlyArray<Readonly<{ name: string; value: string }>>,
+    cacheKey?: string
   ): Promise<string | null>;
 }
 

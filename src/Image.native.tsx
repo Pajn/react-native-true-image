@@ -24,6 +24,7 @@ type NativeHeader = { name: string; value: string };
 export interface ResolvedSource {
   uri: string | undefined;
   headers: NativeHeader[] | undefined;
+  cacheKey: string | undefined;
 }
 
 /**
@@ -35,13 +36,18 @@ export interface ResolvedSource {
  * throwing.
  */
 export function resolveSource(source: ImageSource): ResolvedSource {
-  if (source == null) return { uri: undefined, headers: undefined };
-  if (typeof source === 'string') return { uri: source, headers: undefined };
+  const none = { headers: undefined, cacheKey: undefined };
+  if (source == null) return { uri: undefined, ...none };
+  if (typeof source === 'string') return { uri: source, ...none };
   if (typeof source === 'number') {
     const resolved = RNImage.resolveAssetSource(source);
-    return { uri: resolved?.uri ?? undefined, headers: undefined };
+    return { uri: resolved?.uri ?? undefined, ...none };
   }
-  return { uri: source.uri, headers: toNativeHeaders(source.headers) };
+  return {
+    uri: source.uri,
+    headers: toNativeHeaders(source.headers),
+    cacheKey: source.cacheKey || undefined,
+  };
 }
 
 function toNativeHeaders(
@@ -129,6 +135,7 @@ function ImageComponent({
       ref={ref}
       source={resolved.uri}
       headers={resolved.headers}
+      cacheKey={resolved.cacheKey}
       transition={resolvedTransition}
       resizeMode={resizeMode}
       downsampleThreshold={downsampleThreshold}
@@ -182,6 +189,7 @@ async function prefetch(
       return {
         uri: request.uri,
         headers: toNativeHeaders(request.headers),
+        cacheKey: request.cacheKey || undefined,
         displayWidth: size?.width,
         displayHeight: size?.height,
         resizeMode: settings.resizeMode,
@@ -206,7 +214,7 @@ async function getColors(
   source: ImageSource,
   options: ImageColorsOptions = {}
 ): Promise<ImageColors | null> {
-  const { uri } = resolveSource(source);
+  const { uri, cacheKey } = resolveSource(source);
   if (uri === undefined) return null;
   const headers =
     typeof source === 'object' && source !== null
@@ -215,7 +223,8 @@ async function getColors(
   const pixels = await NativeTrueImage.getPixels(
     uri,
     COLOR_SAMPLE_SIZE,
-    toNativeHeaders(headers)
+    toNativeHeaders(headers),
+    cacheKey
   );
   if (pixels == null) return null;
   const bytes = decodeBase64(pixels);
