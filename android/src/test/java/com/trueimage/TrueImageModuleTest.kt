@@ -14,6 +14,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -87,14 +88,14 @@ class TrueImageModuleTest : GlideTestCase() {
   }
 
   /** The base64 string getPixels resolves, or null. */
-  private fun pixelsViaModule(uri: String, size: Double, headers: JavaOnlyArray? = null): String? {
+  private fun pixelsViaModule(uri: String, size: Double, headers: JavaOnlyArray? = null, cacheKey: String? = null): String? {
     val module = TrueImageModule(TestReactContext(app))
     val value = AtomicReference<Array<out Any?>?>(null)
     val promise = PromiseImpl(
       Callback { args -> value.set(args) },
       Callback { error("getPixels must resolve, never reject") },
     )
-    module.getPixels(uri, size, headers, promise)
+    module.getPixels(uri, size, headers, cacheKey, promise)
     settle { value.get() != null }
     return value.get()!![0] as String?
   }
@@ -116,6 +117,22 @@ class TrueImageModuleTest : GlideTestCase() {
     val headers = JavaOnlyArray.of(JavaOnlyMap.of("name", "Authorization", "value", "Bearer t"))
     pixelsViaModule("https://cdn.example.com/a.jpg", 16.0, headers)
     assertEquals(mapOf("Authorization" to "Bearer t"), network.headersSeen["https://cdn.example.com/a.jpg"])
+  }
+
+  @Test
+  fun getPixelsFetchesWhenTheVariantIsGone() {
+    val requested = "https://cdn.example.com/album?size=80"
+    TrueImageVariants.record(app, "album", "https://cdn.example.com/album?size=512", 512, 512)
+    assertNotNull(pixelsViaModule(requested, 16.0, cacheKey = "album"))
+    assertEquals(1, network.fetches[requested])
+    assertNull(network.fetches["https://cdn.example.com/album?size=512"])
+    assertEquals(listOf(requested), TrueImageVariants.variants(app, "album").map { it.url })
+  }
+
+  @Test
+  fun prefetchPassesTheCacheKeyThrough() {
+    assertTrue(prefetchViaModule(JavaOnlyMap.of("uri", "https://cdn.example.com/a.jpg", "cacheKey", "a")))
+    assertEquals(listOf("https://cdn.example.com/a.jpg"), TrueImageVariants.variants(app, "a").map { it.url })
   }
 
   @Test

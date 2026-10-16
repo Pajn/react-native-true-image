@@ -172,3 +172,43 @@ class SourceTest {
     assertEquals(FitMode.COVER, FitMode.from("bogus"))
   }
 }
+
+class VariantsTest {
+  @Test
+  fun coverAndStretchNeedEnoughPixelsOnBothAxes() {
+    assertTrue(Variants.suffices(512, 512, 300, 300, FitMode.COVER))
+    assertTrue(Variants.suffices(300, 300, 300, 300, FitMode.COVER))
+    assertFalse(Variants.suffices(256, 256, 300, 300, FitMode.COVER))
+    // A wide image covering a square view is drawn by its height.
+    assertFalse(Variants.suffices(600, 200, 300, 300, FitMode.COVER))
+    assertFalse(Variants.suffices(600, 200, 300, 300, FitMode.STRETCH))
+    assertTrue(Variants.suffices(600, 300, 300, 300, FitMode.STRETCH))
+  }
+
+  @Test
+  fun containNeedsEnoughPixelsOnTheAxisItFitsBy() {
+    assertTrue(Variants.suffices(600, 200, 300, 300, FitMode.CONTAIN))
+    assertFalse(Variants.suffices(200, 100, 300, 300, FitMode.CONTAIN))
+  }
+
+  @Test
+  fun centerAndUnsizedViewsNeverSuffice() {
+    assertFalse(Variants.suffices(1024, 1024, 100, 100, FitMode.CENTER))
+    assertFalse(Variants.suffices(1024, 1024, 0, 100, FitMode.COVER))
+    assertFalse(Variants.suffices(0, 0, 100, 100, FitMode.COVER))
+  }
+
+  @Test
+  fun choiceSplitsSufficientSmallestFirstAndSmallerLargestFirst() {
+    val v80 = TrueImageVariants.Variant("u?size=80", 80, 80)
+    val v256 = TrueImageVariants.Variant("u?size=256", 256, 256)
+    val v512 = TrueImageVariants.Variant("u?size=512", 512, 512)
+    val v1024 = TrueImageVariants.Variant("u?size=1024", 1024, 1024)
+    val choice = TrueImageVariants.choose(listOf(v1024, v80, v512, v256), "u?size=512", 300, 300, FitMode.COVER)
+    assertEquals(listOf(v1024), choice.sufficient)
+    assertEquals(listOf(v256, v80), choice.smaller)
+    val unsized = TrueImageVariants.choose(listOf(v80, v256), null, 0, 0, FitMode.COVER)
+    assertTrue(unsized.sufficient.isEmpty())
+    assertEquals(listOf(v256, v80), unsized.smaller)
+  }
+}

@@ -3,6 +3,7 @@
 #import <SDWebImage/SDWebImage.h>
 
 #import "TrueImageModule.h"
+#import "TrueImageVariants.h"
 
 @implementation TrueImageHarness
 
@@ -72,6 +73,7 @@
   _network.defaultData = [TrueImageTestCase pngWithSize:CGSizeMake(8, 8)
                                                   color:[UIColor colorWithRed:200 / 255.0 green:50 / 255.0 blue:50 / 255.0 alpha:1]];
   [TrueImageLoader setImageLoaderForTesting:_network];
+  [TrueImageVariants reset];
 
   SDImageCache *cache = SDImageCache.sharedImageCache;
   [cache clearMemory];

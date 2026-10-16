@@ -12,15 +12,24 @@ import { DEFAULT_TRANSITION } from '../types';
 const mockPrefetch = jest.fn<(requests: unknown[]) => Promise<boolean>>();
 const mockGetPixels =
   jest.fn<
-    (uri: string, size: number, headers: unknown) => Promise<string | null>
+    (
+      uri: string,
+      size: number,
+      headers: unknown,
+      cacheKey: unknown
+    ) => Promise<string | null>
   >();
 
 jest.mock('../specs/NativeTrueImage', () => ({
   __esModule: true,
   default: {
     prefetch: (requests: unknown[]) => mockPrefetch(requests),
-    getPixels: (uri: string, size: number, headers: unknown) =>
-      mockGetPixels(uri, size, headers),
+    getPixels: (
+      uri: string,
+      size: number,
+      headers: unknown,
+      cacheKey: unknown
+    ) => mockGetPixels(uri, size, headers, cacheKey),
   },
 }));
 
@@ -92,6 +101,21 @@ describe('source resolution', () => {
   it('sends no header list for a uri object without headers', async () => {
     await render(<Image source={{ uri: 'https://x/a.jpg', headers: {} }} />);
     expect(nativeProps().headers).toBeUndefined();
+  });
+
+  it('passes a cacheKey through and leaves it undefined otherwise', async () => {
+    await render(
+      <Image
+        source={{ uri: 'https://x/a.jpg?size=512', cacheKey: 'album-1' }}
+      />
+    );
+    expect(nativeProps().source).toBe('https://x/a.jpg?size=512');
+    expect(nativeProps().cacheKey).toBe('album-1');
+    expect(resolveSource('https://x/a.jpg').cacheKey).toBeUndefined();
+    expect(resolveSource({ uri: 'https://x/a.jpg' }).cacheKey).toBeUndefined();
+    expect(
+      resolveSource({ uri: 'https://x/a.jpg', cacheKey: '' }).cacheKey
+    ).toBeUndefined();
   });
 
   it('passes scheme-less resource names through as-is', async () => {
@@ -336,6 +360,20 @@ describe('prefetch', () => {
     ]);
   });
 
+  it('carries a cacheKey into the request', async () => {
+    await Image.prefetch([
+      { uri: 'https://x/a.jpg?size=256', cacheKey: 'album-1' },
+      'https://x/b.jpg',
+    ]);
+    expect(mockPrefetch).toHaveBeenCalledWith([
+      expect.objectContaining({
+        uri: 'https://x/a.jpg?size=256',
+        cacheKey: 'album-1',
+      }),
+      { uri: 'https://x/b.jpg' },
+    ]);
+  });
+
   it('propagates a false result', async () => {
     mockPrefetch.mockResolvedValue(false);
     await expect(Image.prefetch(['https://x/missing.jpg'])).resolves.toBe(
@@ -363,6 +401,7 @@ describe('getColors', () => {
     expect(mockGetPixels).toHaveBeenCalledWith(
       'https://x/a.jpg',
       COLOR_SAMPLE_SIZE,
+      undefined,
       undefined
     );
     expect(colors).toEqual(
@@ -381,7 +420,8 @@ describe('getColors', () => {
       [
         { name: 'Authorization', value: 'Bearer s' },
         { name: 'X-Proxy', value: 'shelf' },
-      ]
+      ],
+      undefined
     );
   });
 
@@ -393,9 +433,23 @@ describe('getColors', () => {
     expect(mockGetPixels).toHaveBeenCalledWith(
       'file:///bundle/cover.png',
       COLOR_SAMPLE_SIZE,
+      undefined,
       undefined
     );
     spy.mockRestore();
+  });
+
+  it('sends the source cacheKey so native can sample a cached variant', async () => {
+    await Image.getColors({
+      uri: 'https://x/a.jpg?size=80',
+      cacheKey: 'album-1',
+    });
+    expect(mockGetPixels).toHaveBeenCalledWith(
+      'https://x/a.jpg?size=80',
+      COLOR_SAMPLE_SIZE,
+      undefined,
+      'album-1'
+    );
   });
 
   it('resolves null when native could not load the image', async () => {

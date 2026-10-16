@@ -2,6 +2,7 @@
 
 #import "TrueImageModule.h"
 #import "TrueImagePixels.h"
+#import "TrueImageVariants.h"
 
 /// The samples `getPixels` hands JS for colour extraction: row-major RGBA,
 /// 8-bit and not premultiplied, loaded through the view's cache.
@@ -18,8 +19,13 @@
   _url = @"https://cdn.example.com/cover.jpg";
 }
 
-/// What the module resolves, decoded; nil when it resolved null.
 - (NSData *)pixels:(NSString *)uri size:(double)size headers:(NSArray *)headers
+{
+  return [self pixels:uri size:size headers:headers cacheKey:nil];
+}
+
+/// What the module resolves, decoded; nil when it resolved null.
+- (NSData *)pixels:(NSString *)uri size:(double)size headers:(NSArray *)headers cacheKey:(NSString *)cacheKey
 {
   __block BOOL done = NO;
   __block id result;
@@ -27,6 +33,7 @@
   [module getPixels:uri
                size:size
             headers:headers
+           cacheKey:cacheKey
             resolve:^(id value) {
               result = value;
               done = YES;
@@ -79,6 +86,30 @@
   XCTAssertTrue(([self prefetch:@[ _url ]]));
   XCTAssertNotNil([self pixels:_url size:16 headers:nil]);
   XCTAssertEqual([self.network fetchCount:_url], 1u);
+}
+
+- (void)testSamplesACachedVariantInsteadOfFetching
+{
+  NSString *big = @"https://cdn.example.com/album?size=512";
+  NSString *requested = @"https://cdn.example.com/album?size=80";
+  self.network.dataByURL[big] = [TrueImageTestCase pngWithSize:CGSizeMake(64, 64) color:UIColor.blueColor];
+  XCTAssertTrue(([self prefetch:@[ @{@"uri" : big, @"cacheKey" : @"album"} ]]));
+  NSData *data = [self pixels:requested size:16 headers:nil cacheKey:@"album"];
+  XCTAssertEqual(data.length, 16u * 16u * 4u);
+  const uint8_t *bytes = (const uint8_t *)data.bytes;
+  XCTAssertEqualWithAccuracy(bytes[2], 255, 1, @"the variant's colour");
+  XCTAssertEqual([self.network fetchCount:requested], 0u);
+  XCTAssertEqual([self.network fetchCount:big], 1u);
+}
+
+- (void)testFetchesTheSourceWhenTheVariantIsGone
+{
+  NSString *requested = @"https://cdn.example.com/album?size=80";
+  [TrueImageVariants recordURL:@"https://cdn.example.com/album?size=512" pixelSize:CGSizeMake(512, 512) forKey:@"album"];
+  XCTAssertNotNil([self pixels:requested size:16 headers:nil cacheKey:@"album"]);
+  XCTAssertEqual([self.network fetchCount:requested], 1u);
+  XCTAssertEqual([self.network fetchCount:@"https://cdn.example.com/album?size=512"], 0u);
+  XCTAssertEqualObjects([[TrueImageVariants variantsForKey:@"album"] valueForKey:@"url"], @[ requested ]);
 }
 
 - (void)testReportsTranslucentColoursUnpremultiplied

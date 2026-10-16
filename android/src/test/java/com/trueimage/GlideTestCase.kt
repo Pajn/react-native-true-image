@@ -64,6 +64,7 @@ abstract class GlideTestCase {
     network = FakeNetwork()
     Glide.get(app).registry.replace(GlideUrl::class.java, InputStream::class.java, network.Factory())
     TrueImageBlur.evictAll()
+    TrueImageVariants.reset(app)
   }
 
   @After
@@ -135,13 +136,20 @@ abstract class GlideTestCase {
     val headersSeen = mutableMapOf<String, Map<String, String>>()
     val failOnce = mutableSetOf<String>()
     val failAlways = mutableSetOf<String>()
+    /** Pixel size served per URL; others get the 8x8 [PNG]. */
+    val sizes = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
     /** URLs whose fetch is held until [release]. */
     val hang = mutableSetOf<String>()
-    private val held = mutableMapOf<String, DataFetcher.DataCallback<in InputStream>>()
+    private val held = java.util.concurrent.ConcurrentHashMap<String, DataFetcher.DataCallback<in InputStream>>()
+
+    /** Whether a fetch of [url] reached the network and is being held. */
+    fun isHeld(url: String) = held.containsKey(url)
 
     fun release(url: String) {
-      held.remove(url)?.onDataReady(ByteArrayInputStream(PNG))
+      held.remove(url)?.onDataReady(ByteArrayInputStream(bytes(url)))
     }
+
+    private fun bytes(url: String): ByteArray = sizes[url]?.let { (w, h) -> png(w, h) } ?: PNG
 
     inner class Factory : ModelLoaderFactory<GlideUrl, InputStream> {
       override fun build(multiFactory: MultiModelLoaderFactory): ModelLoader<GlideUrl, InputStream> = Loader()
@@ -164,7 +172,7 @@ abstract class GlideTestCase {
         when {
           url in hang -> held[url] = callback
           url in failAlways || failOnce.remove(url) -> callback.onLoadFailed(IOException("HTTP 404"))
-          else -> callback.onDataReady(ByteArrayInputStream(PNG))
+          else -> callback.onDataReady(ByteArrayInputStream(bytes(url)))
         }
       }
 
@@ -182,7 +190,7 @@ abstract class GlideTestCase {
     /** An 8x8 opaque red PNG built in code so no test resource lookup is needed. */
     val PNG: ByteArray = png(8, 8)
 
-    private fun png(width: Int, height: Int): ByteArray {
+    fun png(width: Int, height: Int): ByteArray {
       val raw = ByteArrayOutputStream()
       repeat(height) {
         raw.write(0) // filter: none

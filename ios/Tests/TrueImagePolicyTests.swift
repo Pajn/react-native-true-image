@@ -181,3 +181,31 @@ final class DecodeSizeTests: XCTestCase {
     XCTAssertEqual(TrueImageDecodePixelSize(CGSize(width: 50, height: 50), target, .cover, 2), .zero)
   }
 }
+
+final class VariantTests: XCTestCase {
+  private func suffices(_ image: CGSize, _ view: CGSize, _ mode: TrueImageFitMode) -> Bool {
+    TrueImageVariantSuffices(image, view, mode)
+  }
+
+  func testCoverAndStretchNeedEnoughPixelsOnBothAxes() {
+    let view = CGSize(width: 300, height: 300)
+    XCTAssertTrue(suffices(CGSize(width: 512, height: 512), view, .cover))
+    XCTAssertTrue(suffices(CGSize(width: 300, height: 300), view, .cover))
+    XCTAssertFalse(suffices(CGSize(width: 256, height: 256), view, .cover))
+    XCTAssertFalse(suffices(CGSize(width: 600, height: 200), view, .cover))
+    XCTAssertFalse(suffices(CGSize(width: 600, height: 200), view, .stretch))
+    XCTAssertTrue(suffices(CGSize(width: 600, height: 300), view, .stretch))
+  }
+
+  func testContainNeedsEnoughPixelsOnTheAxisItFitsBy() {
+    let view = CGSize(width: 300, height: 300)
+    XCTAssertTrue(suffices(CGSize(width: 600, height: 200), view, .contain))
+    XCTAssertFalse(suffices(CGSize(width: 200, height: 100), view, .contain))
+  }
+
+  func testCenterAndUnsizedViewsNeverSuffice() {
+    XCTAssertFalse(suffices(CGSize(width: 1024, height: 1024), CGSize(width: 100, height: 100), .center))
+    XCTAssertFalse(suffices(CGSize(width: 1024, height: 1024), .zero, .cover))
+    XCTAssertFalse(suffices(.zero, CGSize(width: 100, height: 100), .cover))
+  }
+}

@@ -53,7 +53,8 @@ class TrueImageViewManagerTest {
   @Test
   fun ownPropsStillReachTheView() {
     val view = TrueImageView(app).apply { downsampleThreshold = 0f }
-    update(view, "resizeMode", "contain", "transition", 250, "recyclingKey", "row-1")
+    update(view, "resizeMode", "contain", "transition", 250, "recyclingKey", "row-1", "cacheKey", "album-1")
+    assertEquals("album-1", view.cacheKey)
     assertEquals(FitMode.CONTAIN, view.fitMode)
     assertEquals(250, view.transitionMs)
     assertEquals("row-1", view.recyclingKey)
