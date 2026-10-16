@@ -39,7 +39,7 @@ await Image.prefetch(covers.map((c) => c.url));
 | Input | What native receives | Path |
 | --- | --- | --- |
 | Remote URL | the string as-is | SDWebImage / Glide through OkHttp |
-| `{ uri, headers }` | the URI plus a header list | same, with the headers on the request |
+| `{ uri, headers, cacheKey }` | the URI plus a header list and cache key | same, with the headers on the request. See [Variants of one picture](#variants-of-one-picture-cachekey) |
 | `require()` asset | `Image.resolveAssetSource().uri` | file loader / drawable |
 | Scheme-less name, e.g. `"ic_play"` | the bare name | iOS asset catalog / Android drawable |
 
@@ -68,7 +68,7 @@ Clipping relies on the default `overflow: 'hidden'`; overriding it to
 
 | Prop | Default | Notes |
 | --- | --- | --- |
-| `source` | | `string`, `{ uri, headers }`, `require()` id, or `null` to clear |
+| `source` | | `string`, `{ uri, headers, cacheKey }`, `require()` id, or `null` to clear |
 | `resizeMode` | `'cover'` | `cover`, `contain`, `stretch`, `center` |
 | `downsampleThreshold` | 2 | Linear oversize factor before decode-time downsampling. `1` always downsamples oversized images; `0` disables it |
 | `transition` | 300 ms for URLs, 0 for assets | Fade duration in milliseconds |
@@ -82,7 +82,7 @@ Clipping relies on the default `overflow: 'hidden'`; overriding it to
 
 ### Events
 
-- `onLoad({ width, height, source })`: the image decoded. Sizes are pixels.
+- `onLoad({ width, height, source })`: the image decoded. Sizes are pixels. With a `cacheKey` the image may be a reused variant, so the size can differ from the URL's; `source` is still the URL the view asked for.
 - `onError({ error, source })`: the load failed. Not fired for a load cancelled by a newer source.
 - `onDisplay()`: the image was handed to the view, at the start of a fade or on draw.
 - `onDisplayEnd()`: the image is fully drawn, after the fade or together with `onDisplay` when there is none.
@@ -182,6 +182,66 @@ Swatch colours are the mean of the pixels they cover, so a flat colour comes
 back exactly. Scaling filters differ slightly between the platforms, so the
 same image can give colours a level or two apart.
 
+### Variants of one picture: cacheKey
+
+Some servers hand out one picture at several URLs, one per size, such as an
+image proxy's `…/cover/42?size=80`, `?size=256` and `?size=512`. Each URL is
+cached on its own, so without help a 512 px album header loads from scratch
+although the 256 px list row it came from is in memory. Give such URLs a
+shared `cacheKey` to say they are the same picture:
+
+```tsx
+const artwork = (size: number) => ({
+  uri: `${server}/imageproxy/${album.id}?size=${size}`,
+  cacheKey: `album:${album.id}`,
+});
+
+<Image source={artwork(256)} style={{ width: 80, height: 80 }} />;
+<Image source={artwork(1024)} style={{ width: 320, height: 320 }} />;
+```
+
+A view whose source has a `cacheKey`:
+
+1. **Reuses a variant instead of fetching.** If another URL with the same
+   key is cached at a resolution that fills the view without upscaling, it
+   is shown and the requested URL is not fetched. "Fills" means at least the
+   view's pixel size on both axes for `cover` and `stretch`, and on the axis
+   the image fits by for `contain`. It decodes under the usual
+   `downsampleThreshold` policy. A variant whose decode for this view is
+   already in memory draws at once, exactly like an exact memory hit;
+   otherwise it decodes from the disk cache without touching the network.
+2. **Stands a smaller variant in while loading.** Otherwise the requested URL
+   loads as usual, and the largest cached variant that is too small is shown
+   as a placeholder in the meantime: at once when it is in memory, after a
+   disk read otherwise. The image then crossfades in over
+   `placeholderTransition`, exactly as from a `placeholder`.
+3. **Changes nothing else.** The exact URL is still preferred when it is
+   cached. The order is: the URL in memory, a sufficient variant in memory,
+   the URL on disk, a sufficient variant on disk, the network. Sources
+   without a `cacheKey`, `resizeMode="center"` and native resources behave
+   as before. A view needs its layout to judge sufficiency; before it has
+   one, a variant can only stand in.
+
+The variant counts as the image: it reports `onLoad`, `onDisplay` and
+`onDisplayEnd` like any other, with the variant's pixel size in `onLoad`.
+A smaller stand-in is a placeholder and reports nothing. `recyclingKey`
+clears and interrupted fades work as for any image. Headers stay out of the
+key: a variant is requested with the headers of the source asking for it.
+
+`Image.prefetch` with a `cacheKey` registers the URL as a variant, and
+`Image.getColors` samples a cached variant instead of fetching, preferring
+the smallest that covers its 48 px sample.
+
+Each platform keeps an index from cache key to the URLs seen with it and
+each URL's full pixel size, recorded whenever a load or prefetch with a key
+succeeds. It holds no pixels. It is stored as a small JSON file in the app's
+caches directory so it survives restarts, written off the main thread a
+second after a change, and bounded to 2000 keys (least recently used are
+dropped) and 8 URLs per key. An unreadable file is discarded. The index
+never claims a cache hit on its own: each variant is looked up cache-only,
+and one the image cache has evicted is forgotten and the next choice is
+tried, ending with the network for the requested URL.
+
 ### Placeholder
 
 A placeholder stands in while `source` loads: a low-resolution copy that a
@@ -193,6 +253,11 @@ fades in, and reports no events, so `onLoad` and friends always describe
 `source`. When the image arrives it crossfades over `placeholderTransition`
 or cuts at `0`. An image that is a memory hit shows at once and the
 placeholder is never loaded.
+
+With a `cacheKey` on `source`, a cached smaller variant of the same picture
+is preferred over a remote `cache-only` placeholder, which is still tried if
+no variant is cached. A local placeholder, or a remote one with the
+`network` policy, is the app's explicit choice and is used instead.
 
 `placeholderPolicy` decides where a remote placeholder may come from.
 `cache-only` reads the memory and disk caches and gives up silently
