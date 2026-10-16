@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. The format follows [Conventional Commits](https://www.conventionalcommits.org/); entries are generated at release time.
 
 
+## [2.2.0](https://github.com/Pajn/react-native-true-image/compare/v2.1.0...v2.2.0) (2026-10-16)
+
+### Features
+
+* reuse variants of one picture across URLs with cacheKey ([1985968](https://github.com/Pajn/react-native-true-image/commit/1985968b6ab62da65892843194607fdb3648914f))
+
+### Bug Fixes
+
+* **ios:** keep the variants read back from the index ([aa067d4](https://github.com/Pajn/react-native-true-image/commit/aa067d478fe51cdf2bdf6ede6d5174c6c8fd68b6))
+
 ## [2.1.0](https://github.com/Pajn/react-native-true-image/compare/v2.0.1...v2.1.0) (2026-10-15)
 
 ### Features
