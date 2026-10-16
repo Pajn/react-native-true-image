@@ -129,9 +129,11 @@ class TrueImageViewManager :
   private class BorderAwareDelegate(manager: TrueImageViewManager) : ViewManagerDelegate<TrueImageView> {
     private val generated = TrueImageViewManagerDelegate<TrueImageView, TrueImageViewManager>(manager)
 
+    @Suppress("ACCIDENTAL_OVERRIDE")
     override fun receiveCommand(view: TrueImageView, commandName: String, args: ReadableArray) =
       generated.receiveCommand(view, commandName, args)
 
+    @Suppress("ACCIDENTAL_OVERRIDE")
     override fun setProperty(view: TrueImageView, propName: String, value: Any?) {
       RADII[propName]?.let { corner ->
         BackgroundStyleApplicator.setBorderRadius(
